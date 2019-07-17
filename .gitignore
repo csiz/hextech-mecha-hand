@@ -1,0 +1,5 @@
+*/build/
+*.defaults
+*.old
+c_cpp_properties.json
+*.lnk
