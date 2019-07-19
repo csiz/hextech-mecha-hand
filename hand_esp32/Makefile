@@ -3,7 +3,7 @@
 # project subdirectory.
 #
 
-PROJECT_NAME := blink
+PROJECT_NAME := hand
 
 include $(IDF_PATH)/make/project.mk
 
