@@ -81,14 +81,16 @@ HysterisisPID8bit pids[6];
 
 // Error flag.
 bool error_state = false;
+bool error_pin[6] = {false, false, false, false, false, false};
 
 // Exponentially average analog reads so we don't get such large fluctuations.
 inline void exp_avg_analog_read(const uint8_t pin, int & value) {
   int new_value = analogRead(pin);
   if (new_value > IN_LOW_THRESHOLD and new_value < IN_HI_THRESHOLD) {
+    error_pin[pin] = false;
     value = (value * 60 + new_value * 40) / 100;
   } else {
-    error_state = true;
+    error_pin[pin] = true;
   }
 }
 
@@ -302,12 +304,14 @@ void loop() {
   last_micros = loop_start_micros;
   const int elapsed_millis = (elapsed_micros + 500) / 1000;
 
-  // Read inputs, clear error flag from last read.
-  error_state = false;
+  // Read inputs.
   read_exp_avg_inputs();
 
   // Update pid controllers.
   for (int i = 0; i < 6; i++) {
+    // Skip errored pins.
+    if(error_pin[i]) continue;
+
     // Guard against updates to the parameters or target.
     noInterrupts();
     pids[i].update(inputs[i], targets[i], elapsed_millis);
@@ -324,7 +328,7 @@ void loop() {
 
     const int control = pids[i].control;
 
-    if (control == 0 or (not enable[i])) {
+    if (control == 0 or (not enable[i]) or error_pin[i]) {
       // Free run till stop.
       power[idx] = 0;
       direction[idx*2 + 0] = false;
@@ -359,7 +363,12 @@ void loop() {
   analogWrite(PWM5, power[5]);
 
 
-  // Set the error led.
+  // Set the error state and led.
+
+  // Use a temporary flag so we update the global state in a single step.
+  bool new_error_state = false;
+  for (int i = 0; i < 6; i++) new_error_state |= error_pin[i];
+  error_state = new_error_state;
   digitalWrite(LED_ERROR, error_state);
 
   // Cap loop frequency.
