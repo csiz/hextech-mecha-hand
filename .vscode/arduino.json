@@ -1,6 +1,7 @@
 {
     "board": "arduino:avr:nano",
-    "configuration": "cpu=atmega328",
+    "configuration": "cpu=atmega328old",
     "sketch": "hand_nano\\main\\main.ino",
-    "output": "hand_nano\\build"
+    "output": "hand_nano\\build",
+    "port": "COM4"
 }

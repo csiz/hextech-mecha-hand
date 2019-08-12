@@ -57,9 +57,10 @@
 #define LOOP_FREQUENCY 100
 const int loop_delay_micros = 1000000 / LOOP_FREQUENCY;
 unsigned long last_micros;
+unsigned long loop_interval_millis = 0;
 
 // I2C address.
-int i2c_address = 0x90;
+int i2c_address = 0x60;
 
 // Input positions, 10bits.
 int inputs[6] = {0, 0, 0, 0, 0, 0};
@@ -189,6 +190,11 @@ i2c_func:
   EACH(SET_PID_OVERSHOOT_MACRO)
 
 
+#define GET_ERROR_MACRO(i) case PID6Drive::GET_ERROR_##i: { lo = error_pin[i] & 0xFF; Wire.write(lo); } goto i2c_func;
+
+  EACH(GET_ERROR_MACRO)
+
+
   case PID6Drive::GET_ERROR_STATE: Wire.write(error_state); goto i2c_func;
 
   case PID6Drive::GET_ALL_INPUTS:
@@ -207,6 +213,9 @@ i2c_func:
       targets[i] = static_cast<int>(hi) << 8 | lo;
     }
     goto i2c_func;
+
+  case PID6Drive::GET_LOOP_INTERVAL: { hi = loop_interval_millis >> 8; lo = loop_interval_millis & 0xFF; Wire.write(hi); Wire.write(lo); } goto i2c_func;
+
   }
 
 #undef READ
@@ -223,6 +232,7 @@ i2c_func:
 #undef SET_PID_D_TIME_MACRO
 #undef SET_PID_THRESHOLD_MACRO
 #undef SET_PID_OVERSHOOT_MACRO
+#undef GET_ERROR_MACRO
 }
 
 void setup() {
@@ -231,8 +241,8 @@ void setup() {
   // Read the address (do this before setting the RCLK and LED_ERROR pins).
   pinMode(ADDRESS0, INPUT_PULLUP);
   pinMode(ADDRESS1, INPUT_PULLUP);
-  bitWrite(i2c_address, 0, digitalRead(ADDRESS0));
-  bitWrite(i2c_address, 1, digitalRead(ADDRESS1));
+  bitWrite(i2c_address, 0, !digitalRead(ADDRESS0));
+  bitWrite(i2c_address, 1, !digitalRead(ADDRESS1));
 
   // Direction pins.
   pinMode(DIR8, OUTPUT);
@@ -303,6 +313,8 @@ void loop() {
   const int elapsed_micros = loop_start_micros - last_micros;
   last_micros = loop_start_micros;
   const int elapsed_millis = (elapsed_micros + 500) / 1000;
+  // Exponentially average the loop time with gamma = 0.99.
+  loop_interval_millis = (loop_interval_millis * 99 + elapsed_millis) / 100;
 
   // Read inputs.
   read_exp_avg_inputs();
