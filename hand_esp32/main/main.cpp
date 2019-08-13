@@ -1,15 +1,8 @@
-/* Blink Example
-
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
 #include <stdio.h>
 
 #include "Arduino.h"
 #include "LiquidCrystal_I2C.h"
+#include "Wire.h"
 
 #include "esp_attr.h"
 #include "driver/gpio.h"
@@ -18,7 +11,9 @@
 #include "sdkconfig.h"
 
 #include "quadrature_encoder.hpp"
+
 #include "pid.hpp"
+#include "pid6drive_interface.hpp"
 
 // Limit loop frequency to Hz.
 #define LOOP_FREQUENCY 100
@@ -28,29 +23,13 @@ const int loop_delay_millis = 1000 / LOOP_FREQUENCY;
 #define WHEEL_1_A GPIO_NUM_16
 #define WHEEL_1_B GPIO_NUM_17
 
-#define MOTOR_1_EN GPIO_NUM_5
-#define MOTOR_1_CHANNEL LEDC_CHANNEL_0
-#define MOTOR_1_L GPIO_NUM_18
-#define MOTOR_1_R GPIO_NUM_19
-
 #define DIRECTION_BUTTON GPIO_NUM_23
-
-#define FINGER_1_J1 GPIO_NUM_36
-#define FINGER_1_J2 GPIO_NUM_39
-#define FINGER_1_J3 GPIO_NUM_34
 
 // TODO: detect whether input passes these conditions and report shorts otherwise.
 // ADC value where it's likely a short (at 10 bit resolution).
 #define ADC_LOW 16 // ~0.06V
 #define ADC_HIGH 848 // ~3.23V Note that 3.3V max input corresponds to 866.
 
-// Don't actuate motors under this value.
-#define CONTROL_THRESHOLD 8
-
-// Exponentially average analog reads so we don't get such large fluctuations.
-inline void exp_avg_analog_read(const uint8_t pin, int & value) {
-  value = (value * 60 + analogRead(pin) * 40) / 100;
-}
 
 // Set the LCD number of columns and rows
 #define LCD_COLUMNS 16
@@ -68,8 +47,18 @@ LiquidCrystal_I2C lcd(0x27, LCD_COLUMNS, LCD_ROWS);
 
 Encoder wheel_1 {WHEEL_1_A, WHEEL_1_B};
 
-HysterisisPID8bit pid_1 {2, 2000/* millis */, 30/* millis */, 4/* threshold */, 8/* overshoot */};
+const int pid_driver_0 = PID6DRIVE_ADDRESS + 0b11;
+
+
+// PID parameters
+// --------------
+// TODO: set the arduino slave parameters.
+int p = 2;
+int i_time = 2000; // millis
 // Capacitor adds 10ms momentum, and exp avg adds ~20ms lag.
+int d_time = 30; // millis
+int threshold = 4;
+int overshoot = 8;
 
 
 // Controls
@@ -77,26 +66,128 @@ int last_position;
 int target = 512;
 int target_per_tick = 8;
 
-// Inputs
-int finger_1_j1 = 0;
-int finger_1_j2 = 0;
-int finger_1_j3 = 0;
+
+int inputs[3];
 
 
 // Time keeping.
 unsigned long last_micros = 0;
 
-bool switch_direction = false;
-int direction = +1;
+void IRAM_ATTR button_interrupt(void * arg);
 
-// TODO: debouncing needs improvement.
+struct Button {
+  const gpio_num_t pin;
+  volatile uint8_t presses = 0;
+  unsigned long last_press = 0;
+  int min_delay = 100;
+
+  Button(gpio_num_t pin) : pin(pin) {}
+
+  void begin(){
+    pinMode(pin, INPUT_PULLDOWN);
+    attachInterruptArg(pin, button_interrupt, this, RISING);
+  }
+
+  void end(){
+    detachInterrupt(pin);
+  }
+
+  size_t collect_presses() {
+    // Might definitely be a better way, but get presses and subtract from
+    // stored presses. If interrupted mid-way we leave them for next time.
+    uint8_t tmp = presses;
+    presses -= tmp;
+    return tmp;
+  }
+};
+
 // Button debounce handling; reset every loop.
 void IRAM_ATTR button_interrupt(void * arg) {
-  *static_cast<bool*>(arg) = true;
+  Button* button = static_cast<Button*>(arg);
+
+  auto now = millis();
+  if (now - button->last_press > button->min_delay) {
+    button->presses += 1;
+    button->last_press = now;
+  }
+}
+
+Button direction_button(DIRECTION_BUTTON);
+bool reverse_direction = false;
+
+// I2C helpers
+// -----------
+
+int nr_wire_errors = 0;
+
+inline int read_int16() {
+  return static_cast<int>(Wire.read()) << 8 | Wire.read();
+}
+
+inline void write_int16(const int value){
+  Wire.write(value >> 8);
+  Wire.write(value & 0xFF);
+}
+
+template<typename Reg>
+inline void read_int16_from(const byte address, const Reg reg, int & value){
+  Wire.beginTransmission(address);
+  Wire.write(static_cast<byte>(reg));
+  if(Wire.endTransmission(false)){
+    nr_wire_errors += 1;
+    return;
+  }
+  // delayMicroseconds(50); // wait for arduino to process.
+  if (Wire.requestFrom(address, 2u) != 2u) {
+    nr_wire_errors += 1;
+    return;
+  }
+
+  value = read_int16();
+}
+
+template<typename Reg>
+inline void write_int16_to(const byte address, const Reg reg, const int value){
+  Wire.beginTransmission(address);
+  Wire.write(static_cast<byte>(reg));
+  write_int16(value);
+  if(Wire.endTransmission()) nr_wire_errors += 1;
+}
+
+template<typename Reg>
+inline void read_from(const byte address, const Reg reg, byte & value) {
+  Wire.beginTransmission(address);
+  Wire.write(static_cast<byte>(reg));
+  if(Wire.endTransmission(false)){
+    nr_wire_errors += 1;
+    return;
+  }
+  // delayMicroseconds(50); // wait for arduino to process.
+  if (Wire.requestFrom(address, 1u) != 1u) {
+    nr_wire_errors += 1;
+    return;
+  }
+
+  value = Wire.read();
+}
+
+template<typename Reg>
+inline void write_to(const byte address, const Reg reg, const byte value){
+  Wire.beginTransmission(address);
+  Wire.write(static_cast<byte>(reg));
+  Wire.write(value);
+  if(Wire.endTransmission()) nr_wire_errors += 1;
 }
 
 
+// Setup
+// -----
+
 void setup(){
+  // Setup serial comms.
+  Serial.begin(115200);
+  Wire.begin();
+
   // initialize LCD
   lcd.begin();
   // turn on LCD backlight
@@ -106,33 +197,35 @@ void setup(){
   // Setup wheel encoder.
   wheel_1.begin();
 
-  // Set motor 1 pins.
-  pinMode(MOTOR_1_EN, OUTPUT);
-  ledcSetup(MOTOR_1_CHANNEL, 500, 8);
-  ledcAttachPin(MOTOR_1_EN, MOTOR_1_CHANNEL);
-  pinMode(MOTOR_1_L, OUTPUT);
-  digitalWrite(MOTOR_1_L, false);
-  pinMode(MOTOR_1_R, OUTPUT);
-  digitalWrite(MOTOR_1_R, false);
-
   // Setup ADC finger position pins.
   analogReadResolution(10);
   analogSetWidth(10);
-
-  pinMode(FINGER_1_J1, ANALOG);
-  pinMode(FINGER_1_J2, ANALOG);
-  pinMode(FINGER_1_J3, ANALOG);
-
 
   // Temporary motor control.
   last_position = wheel_1.position;
 
   // Switch direction button.
-  pinMode(DIRECTION_BUTTON, INPUT_PULLDOWN);
-  attachInterruptArg(DIRECTION_BUTTON, button_interrupt, &switch_direction, RISING);
+  direction_button.begin();
 
   // Initialize time keeping.
   last_micros = micros();
+
+
+  // Wait for the arduino to start an initialize.
+  delay(500);
+
+  // Experiments
+  // -----------
+
+  write_to(pid_driver_0, PID6Drive::OUTPUT_IDX_0, 0);
+  write_to(pid_driver_0, PID6Drive::OUTPUT_IDX_1, 1);
+  write_to(pid_driver_0, PID6Drive::OUTPUT_IDX_2, 2);
+
+  write_to(pid_driver_0, PID6Drive::ENABLE_0, true);
+  write_to(pid_driver_0, PID6Drive::ENABLE_1, true);
+  write_to(pid_driver_0, PID6Drive::ENABLE_2, true);
+
+
 }
 
 void loop(){
@@ -142,49 +235,48 @@ void loop(){
   last_micros = loop_start_micros;
   const int elapsed_millis = (elapsed_micros + 500) / 1000;
 
-  // Check direction button and reset.
-  if (switch_direction) {
-    direction *= -1;
-    switch_direction = false;
+  // Switch direction on an odd number of button presses.
+  if (direction_button.collect_presses() % 2 == 1) {
+    reverse_direction = !reverse_direction;
   }
 
-  // Finger positions.
-  exp_avg_analog_read(FINGER_1_J1, finger_1_j1);
-  exp_avg_analog_read(FINGER_1_J2, finger_1_j2);
-  exp_avg_analog_read(FINGER_1_J3, finger_1_j3);
 
-
-  // Motor control.
+  // Control.
   int tick_diff = wheel_1.position - last_position;
   last_position += tick_diff;
-
   target += tick_diff * target_per_tick;
 
 
-  pid_1.update(finger_1_j2, target, elapsed_millis);
+  // Experiments
+  // -----------
+
+  read_int16_from(pid_driver_0, PID6Drive::GET_INPUT_0, inputs[0]);
+  read_int16_from(pid_driver_0, PID6Drive::GET_INPUT_1, inputs[1]);
+  read_int16_from(pid_driver_0, PID6Drive::GET_INPUT_2, inputs[2]);
+
+  write_int16_to(pid_driver_0, PID6Drive::SET_TARGET_0, target);
+  write_int16_to(pid_driver_0, PID6Drive::SET_TARGET_1, target);
+  write_int16_to(pid_driver_0, PID6Drive::SET_TARGET_2, target);
+
+  write_to(pid_driver_0, PID6Drive::INVERT_0, reverse_direction);
+  write_to(pid_driver_0, PID6Drive::INVERT_1, reverse_direction);
+  write_to(pid_driver_0, PID6Drive::INVERT_2, reverse_direction);
 
 
-  if (abs(pid_1.control) < CONTROL_THRESHOLD) {
-    // Free run.
-    ledcWrite(MOTOR_1_CHANNEL, 0);
-  } else {
-    // Run in control direction at control strength.
-    digitalWrite(MOTOR_1_L, pid_1.control * direction > 0);
-    digitalWrite(MOTOR_1_R, pid_1.control * direction < 0);
-    ledcWrite(MOTOR_1_CHANNEL, abs(pid_1.control));
-  }
+  int pid6drive_loop_time = -1;
+  read_int16_from(pid_driver_0, PID6Drive::GET_LOOP_INTERVAL, pid6drive_loop_time);
 
-
+  // Display
+  // -------
 
   // Text to display.
   lcd_dirty = true;
 
-  // Text2, test out pid
-  // snprintf(lcd_text[0], LCD_COLUMNS+1, "");
-  snprintf(lcd_text[1], LCD_COLUMNS+1, "% 5d %5d %4d", pid_1.control, target, finger_1_j2);
+  snprintf(lcd_text[0], LCD_COLUMNS+1, "%4d %4d %4d %1d", inputs[0], inputs[1], inputs[2], reverse_direction);
+  snprintf(lcd_text[1], LCD_COLUMNS+1, "T%4d E%3d L%3d", target, nr_wire_errors, pid6drive_loop_time);
 
   // LCD
-  if (lcd_dirty and (millis() - lcd_last_millis) > 200) {
+  if (lcd_dirty and (millis() - lcd_last_millis) > 250) {
     lcd.clear();
     for (uint8_t row = 0; row < LCD_ROWS; row++) {
       lcd.setCursor(0, row);
@@ -198,4 +290,3 @@ void loop(){
   const int remaining_millis = loop_delay_millis - ((micros()-loop_start_micros) / 1000);
   if (remaining_millis > 0) delay(remaining_millis);
 }
-

@@ -1,6 +1,8 @@
 #pragma once
 
-enum class PID6Drive : int {
+#define PID6DRIVE_ADDRESS 0x60
+
+enum class PID6Drive : byte {
   /* Disable all controls. */
   DISABLE_ALL = 0x00,
 
@@ -65,4 +67,8 @@ enum class PID6Drive : int {
 
   /* Get exp-average loop interval (milliseconds). */
   GET_LOOP_INTERVAL = 0x83, // 2 byte payload
+
+
+  /* Register value when not in use. This is -1, the default Wire.read value. */
+  _UNUSED = 0xFF,
 };

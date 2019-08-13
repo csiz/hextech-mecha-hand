@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdio.h>
 
 #include <Wire.h>
 
@@ -60,7 +61,8 @@ unsigned long last_micros;
 unsigned long loop_interval_millis = 0;
 
 // I2C address.
-int i2c_address = 0x60;
+int i2c_address = PID6DRIVE_ADDRESS;
+byte current_register = 0xFF;
 
 // Input positions, 10bits.
 int inputs[6] = {0, 0, 0, 0, 0, 0};
@@ -84,36 +86,18 @@ HysterisisPID8bit pids[6];
 bool error_state = false;
 bool error_pin[6] = {false, false, false, false, false, false};
 
+
 // Exponentially average analog reads so we don't get such large fluctuations.
-inline void exp_avg_analog_read(const uint8_t pin, int & value) {
-  int new_value = analogRead(pin);
-  if (new_value > IN_LOW_THRESHOLD and new_value < IN_HI_THRESHOLD) {
-    error_pin[pin] = false;
-    value = (value * 60 + new_value * 40) / 100;
+inline void exp_avg_analog_read(const uint8_t pin, const uint8_t i) {
+  int value = analogRead(pin);
+  if (IN_LOW_THRESHOLD < value and value < IN_HI_THRESHOLD) {
+    error_pin[i] = false;
+    inputs[i] = (inputs[i] * 6 + value * 4 + 5) / 10; // + 5 / 10 to round the value.
   } else {
-    error_pin[pin] = true;
+    error_pin[i] = true;
   }
 }
 
-// Read raw inputs.
-inline void read_inputs(){
-  inputs[0] = analogRead(IN0);
-  inputs[1] = analogRead(IN1);
-  inputs[2] = analogRead(IN2);
-  inputs[3] = analogRead(IN3);
-  inputs[4] = analogRead(IN4);
-  inputs[5] = analogRead(IN5);
-}
-
-// Read exp average inputs.
-inline void read_exp_avg_inputs(){
-  exp_avg_analog_read(IN0, inputs[0]);
-  exp_avg_analog_read(IN1, inputs[1]);
-  exp_avg_analog_read(IN2, inputs[2]);
-  exp_avg_analog_read(IN3, inputs[3]);
-  exp_avg_analog_read(IN4, inputs[4]);
-  exp_avg_analog_read(IN5, inputs[5]);
-}
 
 // Send bits to the shift register, QA bit last.
 template<size_t N>
@@ -131,51 +115,108 @@ void send_sr_bits(bool bits[N]) {
   digitalWrite(RCLK, LOW);
 }
 
-void i2c_request(){
-  // Use at most 3 bytes per function, if we neeed a 2byte value, then
-  // read/send hi first lo second. Ignore incomplete instructions.
-  byte func = 0;
-  byte hi = 0;
-  byte lo = 0;
 
-#define READ(what) if (Wire.available()) { what = Wire.read(); } else { return; }
+// I2C Comms
+// ---------
+
+inline int read_int16() {
+  return static_cast<int>(Wire.read()) << 8 | Wire.read();
+}
+
+inline void write_int16(const int value){
+  Wire.write(value >> 8);
+  Wire.write(value & 0xFF);
+}
+
+// Repeat the macro for all 6 inputs/controls.
 #define EACH(macro) macro(0) macro(1) macro(2) macro(3) macro(4) macro(5)
 
-i2c_func:
-  READ(func);
+/* Request function gets called when master expects a response. */
+void i2c_request(){
+  // Grab the register to handle and reset the current one. We do
+  // this so we can simply return from the switch statement, instead
+  // of having extra code at the end.
+  const byte handling_register = current_register;
+  current_register = 0xFF;
 
-  switch(static_cast<PID6Drive>(func)) {
-  case PID6Drive::DISABLE_ALL: for (int i = 0; i < 6; i++) { enable[i] = false; } goto i2c_func;
+  switch(static_cast<PID6Drive>(handling_register)) {
+  case PID6Drive::_UNUSED:
+    Wire.flush();
+    return;
 
-#define GET_INPUT_MACRO(i) case PID6Drive::GET_INPUT_##i: { hi = inputs[i] >> 8; lo = inputs[i] & 0xFF; Wire.write(hi); Wire.write(lo); } goto i2c_func;
+#define GET_INPUT_MACRO(i) case PID6Drive::GET_INPUT_##i: write_int16(inputs[i]); return;
 
   EACH(GET_INPUT_MACRO)
 
-#define SET_TARGET_MACRO(i) case PID6Drive::SET_TARGET_##i: { READ(hi); READ(lo); targets[i] = static_cast<int>(hi) << 8 | lo; } goto i2c_func;
-
-  EACH(SET_TARGET_MACRO)
-
-#define GET_TARGET_MACRO(i) case PID6Drive::GET_TARGET_##i: { hi = targets[i] >> 8; lo = targets[i] & 0xFF; Wire.write(hi); Wire.write(lo); } goto i2c_func;
+#define GET_TARGET_MACRO(i) case PID6Drive::GET_TARGET_##i: write_int16(targets[i]); return;
 
   EACH(GET_TARGET_MACRO)
 
-#define ENABLE_MACRO(i) case PID6Drive::ENABLE_##i: { READ(lo); enable[i] = static_cast<bool>(lo); } goto i2c_func;
+#define GET_ERROR_MACRO(i) case PID6Drive::GET_ERROR_##i: Wire.write(error_pin[i]); return;
+
+  EACH(GET_ERROR_MACRO)
+
+
+  case PID6Drive::GET_ERROR_STATE:
+    Wire.write(error_state);
+    return;
+
+  case PID6Drive::GET_ALL_INPUTS:
+    for (int i = 0; i < 6; i++) write_int16(inputs[i]);
+    return;
+
+  case PID6Drive::GET_LOOP_INTERVAL:
+    write_int16(loop_interval_millis);
+    return;
+
+  default:
+    Wire.flush();
+    return;
+  }
+}
+
+/* Receive function gets called when master sends data. */
+void i2c_receive(int nr_of_bytes){
+
+  // Assume we have some data.
+  byte func = Wire.read();
+
+  // Insta-return if no data is available (read returns -1).
+  if (func == 0xFF) return;
+
+  // Set register in case we need to respond.
+  current_register = func;
+
+  // Handle pure receive cases.
+  switch(static_cast<PID6Drive>(func)) {
+
+  case PID6Drive::DISABLE_ALL:
+    for (int i = 0; i < 6; i++) enable[i] = false;
+    return;
+
+#define SET_TARGET_MACRO(i) case PID6Drive::SET_TARGET_##i: targets[i] = read_int16(); return;
+
+  EACH(SET_TARGET_MACRO)
+
+
+#define ENABLE_MACRO(i) case PID6Drive::ENABLE_##i: enable[i] = static_cast<bool>(Wire.read()); return;
 
   EACH(ENABLE_MACRO)
 
-#define INVERT_MACRO(i) case PID6Drive::INVERT_##i: { READ(lo); invert[i] = static_cast<bool>(lo); } goto i2c_func;
+#define INVERT_MACRO(i) case PID6Drive::INVERT_##i: invert[i] = static_cast<bool>(Wire.read()); return;
 
   EACH(INVERT_MACRO)
 
 #define OUTPUT_IDX_MACRO(i) \
   case PID6Drive::OUTPUT_IDX_##i: { \
-  READ(lo); int8_t new_idx = static_cast<int8_t>(lo); \
-  if (new_idx >= -1 and new_idx < 6) { output_idx[i] = new_idx; } } \
-  goto i2c_func;
+    int8_t new_idx = static_cast<int8_t>(Wire.read()); \
+    if (new_idx >= -1 and new_idx < 6) output_idx[i] = new_idx; \
+  } \
+  return;
 
   EACH(OUTPUT_IDX_MACRO)
 
-#define SET_PID_PARAM_MACRO(i, param, attr) case PID6Drive::SET_PID_##param##_##i: { READ(hi); READ(lo); pids[i].attr = static_cast<int>(hi) << 8 | lo; } goto i2c_func;
+#define SET_PID_PARAM_MACRO(i, param, attr) case PID6Drive::SET_PID_##param##_##i: pids[i].attr = read_int16(); return;
 
 #define SET_PID_P_MACRO(i) SET_PID_PARAM_MACRO(i, P, p)
 #define SET_PID_I_TIME_MACRO(i) SET_PID_PARAM_MACRO(i, I_TIME, i_time)
@@ -190,35 +231,14 @@ i2c_func:
   EACH(SET_PID_OVERSHOOT_MACRO)
 
 
-#define GET_ERROR_MACRO(i) case PID6Drive::GET_ERROR_##i: { lo = error_pin[i] & 0xFF; Wire.write(lo); } goto i2c_func;
-
-  EACH(GET_ERROR_MACRO)
-
-
-  case PID6Drive::GET_ERROR_STATE: Wire.write(error_state); goto i2c_func;
-
-  case PID6Drive::GET_ALL_INPUTS:
-    for (int i = 0; i < 6; i++) {
-      hi = inputs[i] >> 8;
-      lo = inputs[i] & 0xFF;
-      Wire.write(hi);
-      Wire.write(lo);
-    }
-    goto i2c_func;
 
   case PID6Drive::SET_ALL_TARGETS:
-    for (int i = 0; i < 6; i++) {
-      READ(hi);
-      READ(lo);
-      targets[i] = static_cast<int>(hi) << 8 | lo;
-    }
-    goto i2c_func;
-
-  case PID6Drive::GET_LOOP_INTERVAL: { hi = loop_interval_millis >> 8; lo = loop_interval_millis & 0xFF; Wire.write(hi); Wire.write(lo); } goto i2c_func;
+    for (int i = 0; i < 6; i++) targets[i] = read_int16();
+    return;
 
   }
+}
 
-#undef READ
 #undef EACH
 #undef GET_INPUT_MACRO
 #undef SET_TARGET_MACRO
@@ -233,16 +253,24 @@ i2c_func:
 #undef SET_PID_THRESHOLD_MACRO
 #undef SET_PID_OVERSHOOT_MACRO
 #undef GET_ERROR_MACRO
-}
+
+
+// Startup
+// -------
 
 void setup() {
-  // Setup pin modes and initial values.
+  Serial.begin(115200);
+
+  // Setup pin modes and initial values
+  // ----------------------------------
+
 
   // Read the address (do this before setting the RCLK and LED_ERROR pins).
   pinMode(ADDRESS0, INPUT_PULLUP);
   pinMode(ADDRESS1, INPUT_PULLUP);
   bitWrite(i2c_address, 0, !digitalRead(ADDRESS0));
   bitWrite(i2c_address, 1, !digitalRead(ADDRESS1));
+
 
   // Direction pins.
   pinMode(DIR8, OUTPUT);
@@ -261,8 +289,15 @@ void setup() {
   pinMode(IN3, INPUT);
   pinMode(IN4, INPUT);
   pinMode(IN5, INPUT);
+
   // Read once to initialize input values.
-  read_inputs();
+  inputs[0] = analogRead(IN0);
+  inputs[1] = analogRead(IN1);
+  inputs[2] = analogRead(IN2);
+  inputs[3] = analogRead(IN3);
+  inputs[4] = analogRead(IN4);
+  inputs[5] = analogRead(IN5);
+
 
   // Power control pins.
   pinMode(PWM0, OUTPUT);
@@ -301,6 +336,7 @@ void setup() {
 
   // Join the i2c bus as a slave.
   Wire.begin(i2c_address);
+  Wire.onReceive(i2c_receive);
   Wire.onRequest(i2c_request);
 
   // Initialize time keeping.
@@ -310,14 +346,21 @@ void setup() {
 void loop() {
   // Time keeping.
   unsigned long loop_start_micros = micros();
-  const int elapsed_micros = loop_start_micros - last_micros;
+  const long elapsed_micros = loop_start_micros - last_micros;
   last_micros = loop_start_micros;
   const int elapsed_millis = (elapsed_micros + 500) / 1000;
-  // Exponentially average the loop time with gamma = 0.99.
-  loop_interval_millis = (loop_interval_millis * 99 + elapsed_millis) / 100;
+  // Exponentially average the loop time with gamma = 0.5.
+  loop_interval_millis = (loop_interval_millis * 5 + elapsed_millis * 5 + 5) / 10;
 
-  // Read inputs.
-  read_exp_avg_inputs();
+  // Read inputs, prevent interrupts from reading half of an input.
+  noInterrupts();
+  exp_avg_analog_read(IN0, 0);
+  exp_avg_analog_read(IN1, 1);
+  exp_avg_analog_read(IN2, 2);
+  exp_avg_analog_read(IN3, 3);
+  exp_avg_analog_read(IN4, 4);
+  exp_avg_analog_read(IN5, 5);
+  interrupts();
 
   // Update pid controllers.
   for (int i = 0; i < 6; i++) {
