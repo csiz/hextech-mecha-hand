@@ -119,6 +119,8 @@ void send_sr_bits(bool bits[N]) {
 // I2C Comms
 // ---------
 
+// TODO: some error handling would be nice.
+
 inline int read_int16() {
   return static_cast<int>(Wire.read()) << 8 | Wire.read();
 }
