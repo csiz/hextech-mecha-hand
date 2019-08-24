@@ -4,3 +4,4 @@
 c_cpp_properties.json
 *.lnk
 mechahand.code-workspace
+hand_esp32/components/arduino/
