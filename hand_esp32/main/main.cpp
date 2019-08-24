@@ -47,7 +47,7 @@ LiquidCrystal_I2C lcd(0x27, LCD_COLUMNS, LCD_ROWS);
 
 Encoder wheel_1 {WHEEL_1_A, WHEEL_1_B};
 
-const int pid_driver_0 = PID6DRIVE_ADDRESS + 0b11;
+const int pid_driver_0 = PID6DRIVE_ADDRESS + 0b00;
 
 
 // PID parameters
@@ -113,7 +113,7 @@ void IRAM_ATTR button_interrupt(void * arg) {
 }
 
 Button direction_button(DIRECTION_BUTTON);
-bool reverse_direction = false;
+bool reverse_direction = true;
 
 // I2C helpers
 // -----------
@@ -137,7 +137,7 @@ inline void read_int16_from(const byte address, const Reg reg, int & value){
     nr_wire_errors += 1;
     return;
   }
-  // delayMicroseconds(50); // wait for arduino to process.
+  delayMicroseconds(20); // wait for arduino to process.
   if (Wire.requestFrom(address, 2u) != 2u) {
     nr_wire_errors += 1;
     return;
@@ -162,7 +162,7 @@ inline void read_from(const byte address, const Reg reg, byte & value) {
     nr_wire_errors += 1;
     return;
   }
-  // delayMicroseconds(50); // wait for arduino to process.
+  delayMicroseconds(20); // wait for arduino to process.
   if (Wire.requestFrom(address, 1u) != 1u) {
     nr_wire_errors += 1;
     return;
@@ -183,10 +183,23 @@ inline void write_to(const byte address, const Reg reg, const byte value){
 // Setup
 // -----
 
+void setup_piddrive(const byte address) {
+  write_int16_to(address, PID6Drive::SET_PID_P_1, 1);
+
+  write_to(address, PID6Drive::OUTPUT_IDX_1, 0);
+
+  write_to(address, PID6Drive::ENABLE_1, true);
+
+  write_to(address, PID6Drive::SET_CONFIGURED, true);
+}
+
 void setup(){
+  // Turn the power supply mosfte on.
+  digitalWrite(POWER_CTRL, true);
+
   // Setup serial comms.
-  Serial.begin(115200);
   Wire.begin();
+  Serial.begin(115200);
 
   // initialize LCD
   lcd.begin();
@@ -211,21 +224,13 @@ void setup(){
   last_micros = micros();
 
 
-  // Wait for the arduino to start an initialize.
+  // Wait for the arduino to start and initialize.
   delay(500);
 
   // Experiments
   // -----------
 
-  write_to(pid_driver_0, PID6Drive::OUTPUT_IDX_0, 0);
-  write_to(pid_driver_0, PID6Drive::OUTPUT_IDX_1, 1);
-  write_to(pid_driver_0, PID6Drive::OUTPUT_IDX_2, 2);
-
-  write_to(pid_driver_0, PID6Drive::ENABLE_0, true);
-  write_to(pid_driver_0, PID6Drive::ENABLE_1, true);
-  write_to(pid_driver_0, PID6Drive::ENABLE_2, true);
-
-
+  setup_piddrive(pid_driver_0);
 }
 
 void loop(){
@@ -250,18 +255,21 @@ void loop(){
   // Experiments
   // -----------
 
+  // TODO: restart serial, does this do anything?
+  Wire.begin();
+
+  byte configured_0 = 0xFF;
+  read_from(pid_driver_0, PID6Drive::GET_CONFIGURED, configured_0);
+
+  if (configured_0 != 1) setup_piddrive(pid_driver_0);
+
   read_int16_from(pid_driver_0, PID6Drive::GET_INPUT_0, inputs[0]);
   read_int16_from(pid_driver_0, PID6Drive::GET_INPUT_1, inputs[1]);
   read_int16_from(pid_driver_0, PID6Drive::GET_INPUT_2, inputs[2]);
 
-  write_int16_to(pid_driver_0, PID6Drive::SET_TARGET_0, target);
   write_int16_to(pid_driver_0, PID6Drive::SET_TARGET_1, target);
-  write_int16_to(pid_driver_0, PID6Drive::SET_TARGET_2, target);
 
-  write_to(pid_driver_0, PID6Drive::INVERT_0, reverse_direction);
   write_to(pid_driver_0, PID6Drive::INVERT_1, reverse_direction);
-  write_to(pid_driver_0, PID6Drive::INVERT_2, reverse_direction);
-
 
   int pid6drive_loop_time = -1;
   read_int16_from(pid_driver_0, PID6Drive::GET_LOOP_INTERVAL, pid6drive_loop_time);
@@ -273,7 +281,7 @@ void loop(){
   lcd_dirty = true;
 
   snprintf(lcd_text[0], LCD_COLUMNS+1, "%4d %4d %4d %1d", inputs[0], inputs[1], inputs[2], reverse_direction);
-  snprintf(lcd_text[1], LCD_COLUMNS+1, "T%4d E%3d L%3d", target, nr_wire_errors, pid6drive_loop_time);
+  snprintf(lcd_text[1], LCD_COLUMNS+1, "T%4d E%3d L%3d", target, nr_wire_errors %1000, pid6drive_loop_time);
 
   // LCD
   if (lcd_dirty and (millis() - lcd_last_millis) > 250) {

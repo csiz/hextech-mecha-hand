@@ -1,3 +1,9 @@
+Fixme
+-----
+
+[ ] Connect the pid drive shift register to the reset line. After a reset the arduino pulls the pins high, which causes the motors to move if the shift register outputs are also high.
+
+
 ESP
 ---
 
@@ -11,17 +17,37 @@ ESP
 [ ] Measure power.
 [ ] Measure tip pressure via precise ADC IC.
 
+### PCB
+
+[ ] Draw board layout.
+[ ] Place parts on printed PCB and order.
+
+[ ] Maybe put a coil in series with the power so we limit the current on turning on.
+Since motor capacitance will charge up on power-up.
+
+[ ] P-channel mosfet power switch. Hmm.
 
 Nano
 ----
 
-[ ] Select which input to which joint.
-[ ] Select which output to which joint.
-[ ] PID drive joint to target.
-[ ] Set P, I, D, threshold, overshoot, direction settings for each joint.
+[x] Select which input to which joint.
+[v] Select which output to which joint.
+[v] PID drive joint to target.
+[v] Set P, I, D, threshold, overshoot, direction settings for each joint.
 [ ] Drive joint for duration at power.
-[ ] Get joint position.
-[ ] 2 input pins for address selection so only need 1 program to upload.
+[v] Get joint position.
+[v] 2 input pins for address selection so only need 1 program to upload.
+[v] Error handling for the I2C.
+
+
+### PCB
+
+
+[v] Draw board layout.
+[v] Build board for the copper prototype pads.
+[v] Place parts on printed PCB and order.
+[ ] Assemble boards.
+[v] Test boards.
 
 
 Demo Page
@@ -31,18 +57,11 @@ Demo Page
 [ ] Connect via websocket to hand.
 
 
-PCB
----
-
-[ ] Draw board layout.
-[ ] Build board for the copper prototype pads.
-[ ] Place parts on printed PCB and order.
-
-
 Hand
 ----
 
-[ ] Make spindle shorter and better middle rail so nylon doesn't slip even on when over-driven. Maybe reduce the tensioner angle?
+[x] Make spindle shorter and better middle rail so nylon doesn't slip even on when over-driven. Maybe reduce the tensioner angle?
+[ ] Make holes for spindle wires so it channels the wire better.
 [ ] Edit motor holder to have top support for motor, and higher/tighter spindle blocker.
 [ ] Re-make hand using new fingers.
 [ ] Better leverage for thumb and pinkie carriages.

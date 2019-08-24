@@ -68,6 +68,14 @@ enum class PID6Drive : byte {
   /* Get exp-average loop interval (milliseconds). */
   GET_LOOP_INTERVAL = 0x83, // 2 byte payload
 
+  /* Set the configured flag; can be used to detect a reset and reconfigure. */
+  SET_CONFIGURED = 0x84, // 1 byte payload
+
+  /* Get the configured flag; it is flase on reset. */
+  GET_CONFIGURED = 0x85, // 1 byte payload
+
+  /* Get and reset the number of i2c errors on the salve. */
+  GET_RESET_I2C_ERRORS = 0x86, // 1 byte payload
 
   /* Register value when not in use. This is -1, the default Wire.read value. */
   _UNUSED = 0xFF,

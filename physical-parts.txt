@@ -2,12 +2,12 @@ Parts
 -----
 
 * 3 - Arduino Nano (Elegoo, ATmega328P and CH340 chips)
-* 40 - 200uF bipolar electrolytic capacitors
+* 20 - 220uF bipolar electrolytic capacitors (10mm x 16mm) (220uF 25V Japan NIC NNR Series 10x16mm).
 * 8 - resistive strain gauge BF350-3AA
 * 20 - B503 dial potentiometer
 * 20 - VE508 micro metal geared box electric motor
 * 22 [TODO + arm rotation] - MR522ZZ ball bearings
-* 1 - ACS712 Current Sensor Module
+* 1 - ACS712 05B Current Sensor Module
 * a dozen - 4mm steel bearing balls
 * lots - M3 hex nut
 * lots - M3 x 8mm hex socket button head screw
@@ -16,7 +16,7 @@ Parts
 * bunch - springs
 * lots - 0.2mm nylon wire
 * 2 - prototype PCB board
-* 2 - ADS1015 analog to digial board
+* 3 - ADS1115 analog to digial board
 * 20 - red LED
 * 20 - yellow LED
 * 40 - 300ohm 0.25W through hole resistors 2mm x 5.5mm
@@ -28,3 +28,5 @@ Parts
 * 16- BF350 strain gauges
 * 1.5mm hex rods (cut from hex keys)
 * 20x PT-6KV103A2020E Potentiometers (vertical adjust and extended life are important)
+* 4x 25V2200UF electrolytic capacitor (13mm x 21mm)
+* 1x 1N4001 Rectifier Diode

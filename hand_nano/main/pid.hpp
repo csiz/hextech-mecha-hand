@@ -58,7 +58,9 @@ struct HysterisisPID8bit {
     last_target = target;
 
     // Keep a running integral of the error. Use floating point to have enough precision.
-    integral_control = clamp(integral_control + static_cast<float>(p) * error * elapsed / i_time, -512.f, +512.f);
+    if (i_time != 0) {
+      integral_control = clamp(integral_control + static_cast<float>(p) * error * elapsed / i_time, -512.f, +512.f);
+    }
 
     //  Compute the control due to proportional and derivative terms.
     const int pd_control = p * (error + diff);
