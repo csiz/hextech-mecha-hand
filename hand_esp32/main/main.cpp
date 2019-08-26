@@ -1,5 +1,6 @@
 #include <stdio.h>
 
+#include "Esp.h"
 #include "Arduino.h"
 #include "LiquidCrystal_I2C.h"
 #include "Wire.h"
@@ -18,6 +19,38 @@
 // Limit loop frequency to Hz.
 #define LOOP_FREQUENCY 100
 const int loop_delay_millis = 1000 / LOOP_FREQUENCY;
+
+// Power management pins
+#define POWER_CTRL GPIO_NUM_2
+#define POWER_BTN GPIO_NUM_4
+#define VOLTAGE_IN GPIO_NUM_36
+#define CURRENT_IN GPIO_NUM_39
+
+
+unsigned long power_last_press = 0;
+bool power_is_pressed = false;
+
+void IRAM_ATTR power_button_interrupt() {
+  // Rising if it's a high value now.
+  if (digitalRead(POWER_BTN)) {
+    power_last_press = millis();
+    power_is_pressed = true;
+
+  // Otherwise falling.
+  } else {
+    // Debounce.
+    if (millis() - power_last_press > 100) {
+      power_is_pressed = false;
+    }
+  }
+}
+
+
+// Anything above should be final
+// ------------------------------
+
+
+
 
 // Define pin connections
 #define WHEEL_1_A GPIO_NUM_16
@@ -194,10 +227,28 @@ void setup_piddrive(const byte address) {
 }
 
 void setup(){
-  // Turn the power supply mosfte on.
-  digitalWrite(POWER_CTRL, true);
+  // Power
+  // -----
 
-  // Setup serial comms.
+  // Initialize the power pins.
+  pinMode(POWER_BTN, INPUT_PULLDOWN);
+  pinMode(POWER_CTRL, OUTPUT);
+  pinMode(VOLTAGE_IN, INPUT);
+  pinMode(CURRENT_IN, INPUT);
+
+  // If still pressed we can turn on the board. Otherwise, maybe we woke from a reset,
+  // then turn off and wait for another power button press.
+  if (digitalRead(POWER_BTN)) {
+    // Turn the power supply mosfet on.
+    digitalWrite(POWER_CTRL, HIGH);
+  } else {
+    ESP.restart();
+  }
+
+  attachInterrupt(POWER_BTN, power_button_interrupt, CHANGE);
+
+  // Comms
+  // -----
   Wire.begin();
   Serial.begin(115200);
 
@@ -240,6 +291,12 @@ void loop(){
   last_micros = loop_start_micros;
   const int elapsed_millis = (elapsed_micros + 500) / 1000;
 
+  // Power management; if power button has been held for 1 second, turn off.
+  if (power_is_pressed and millis() - power_last_press > 1000) {
+    digitalWrite(POWER_CTRL, LOW);
+  }
+
+
   // Switch direction on an odd number of button presses.
   if (direction_button.collect_presses() % 2 == 1) {
     reverse_direction = !reverse_direction;
@@ -274,14 +331,23 @@ void loop(){
   int pid6drive_loop_time = -1;
   read_int16_from(pid_driver_0, PID6Drive::GET_LOOP_INTERVAL, pid6drive_loop_time);
 
+
+
+  // Power experiments.
+  int voltage_in = analogRead(VOLTAGE_IN);
+  int current_in = analogRead(CURRENT_IN);
+
+
   // Display
   // -------
 
   // Text to display.
   lcd_dirty = true;
 
-  snprintf(lcd_text[0], LCD_COLUMNS+1, "%4d %4d %4d %1d", inputs[0], inputs[1], inputs[2], reverse_direction);
-  snprintf(lcd_text[1], LCD_COLUMNS+1, "T%4d E%3d L%3d", target, nr_wire_errors %1000, pid6drive_loop_time);
+  snprintf(lcd_text[0], LCD_COLUMNS+1, "V%4d I%4d E%3d", voltage_in, current_in, nr_wire_errors);
+
+  // snprintf(lcd_text[0], LCD_COLUMNS+1, "%4d %4d %4d %1d", inputs[0], inputs[1], inputs[2], reverse_direction);
+  snprintf(lcd_text[1], LCD_COLUMNS+1, "T%4d X%4d L%2d", target, inputs[1], pid6drive_loop_time);
 
   // LCD
   if (lcd_dirty and (millis() - lcd_last_millis) > 250) {
