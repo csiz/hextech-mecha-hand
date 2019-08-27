@@ -15,6 +15,8 @@
 
 #include "pid.hpp"
 #include "pid6drive_interface.hpp"
+#include "i2c.hpp"
+#include "ads1115.hpp"
 
 // Limit loop frequency to Hz.
 #define LOOP_FREQUENCY 100
@@ -26,7 +28,12 @@ const int loop_delay_millis = 1000 / LOOP_FREQUENCY;
 #define VOLTAGE_IN GPIO_NUM_36
 #define CURRENT_IN GPIO_NUM_39
 
+// Finger-tip pressure sensors pins.
+#define ADS0_ALERT GPIO_NUM_19
+#define ADS0_ADDRESS (ADS_ADDRESS + 0b00)
 
+
+// Powermanagement button.
 unsigned long power_last_press = 0;
 bool power_is_pressed = false;
 
@@ -44,6 +51,8 @@ void IRAM_ATTR power_button_interrupt() {
     }
   }
 }
+
+
 
 
 // Anything above should be final
@@ -82,6 +91,10 @@ Encoder wheel_1 {WHEEL_1_A, WHEEL_1_B};
 
 const int pid_driver_0 = PID6DRIVE_ADDRESS + 0b00;
 
+ADS1115_3In_1Ref ads_0(ADS0_ALERT, ADS0_ADDRESS);
+int ads_0_reads = 0;
+int ads_0_last_reads = 0;
+float ads_0_sps = 0.0;
 
 // PID parameters
 // --------------
@@ -148,69 +161,7 @@ void IRAM_ATTR button_interrupt(void * arg) {
 Button direction_button(DIRECTION_BUTTON);
 bool reverse_direction = true;
 
-// I2C helpers
-// -----------
 
-int nr_wire_errors = 0;
-
-inline int read_int16() {
-  return static_cast<int>(Wire.read()) << 8 | Wire.read();
-}
-
-inline void write_int16(const int value){
-  Wire.write(value >> 8);
-  Wire.write(value & 0xFF);
-}
-
-template<typename Reg>
-inline void read_int16_from(const byte address, const Reg reg, int & value){
-  Wire.beginTransmission(address);
-  Wire.write(static_cast<byte>(reg));
-  if(Wire.endTransmission(false)){
-    nr_wire_errors += 1;
-    return;
-  }
-  delayMicroseconds(20); // wait for arduino to process.
-  if (Wire.requestFrom(address, 2u) != 2u) {
-    nr_wire_errors += 1;
-    return;
-  }
-
-  value = read_int16();
-}
-
-template<typename Reg>
-inline void write_int16_to(const byte address, const Reg reg, const int value){
-  Wire.beginTransmission(address);
-  Wire.write(static_cast<byte>(reg));
-  write_int16(value);
-  if(Wire.endTransmission()) nr_wire_errors += 1;
-}
-
-template<typename Reg>
-inline void read_from(const byte address, const Reg reg, byte & value) {
-  Wire.beginTransmission(address);
-  Wire.write(static_cast<byte>(reg));
-  if(Wire.endTransmission(false)){
-    nr_wire_errors += 1;
-    return;
-  }
-  delayMicroseconds(20); // wait for arduino to process.
-  if (Wire.requestFrom(address, 1u) != 1u) {
-    nr_wire_errors += 1;
-    return;
-  }
-
-  value = Wire.read();
-}
-
-template<typename Reg>
-inline void write_to(const byte address, const Reg reg, const byte value){
-  Wire.beginTransmission(address);
-  Wire.write(static_cast<byte>(reg));
-  Wire.write(value);
-  if(Wire.endTransmission()) nr_wire_errors += 1;
-}
 
 
 // Setup
@@ -250,6 +201,7 @@ void setup(){
   // Comms
   // -----
   Wire.begin();
+  Wire.setClock(400000);
   Serial.begin(115200);
 
   // initialize LCD
@@ -282,6 +234,8 @@ void setup(){
   // -----------
 
   setup_piddrive(pid_driver_0);
+
+  ads_0.begin();
 }
 
 void loop(){
@@ -337,6 +291,11 @@ void loop(){
   int voltage_in = analogRead(VOLTAGE_IN);
   int current_in = analogRead(CURRENT_IN);
 
+  // Ads experiments.
+
+  int ads_new_reads = ads_0_reads - ads_0_last_reads;
+  ads_0_last_reads = ads_0_reads;
+  ads_0_sps = 0.9 * ads_0_sps + 0.1 * (ads_new_reads * 1000 / elapsed_millis);
 
   // Display
   // -------
@@ -344,10 +303,14 @@ void loop(){
   // Text to display.
   lcd_dirty = true;
 
-  snprintf(lcd_text[0], LCD_COLUMNS+1, "V%4d I%4d E%3d", voltage_in, current_in, nr_wire_errors);
-
+  // snprintf(lcd_text[0], LCD_COLUMNS+1, "V%4d I%4d E%3d", voltage_in, current_in, nr_wire_errors);
   // snprintf(lcd_text[0], LCD_COLUMNS+1, "%4d %4d %4d %1d", inputs[0], inputs[1], inputs[2], reverse_direction);
-  snprintf(lcd_text[1], LCD_COLUMNS+1, "T%4d X%4d L%2d", target, inputs[1], pid6drive_loop_time);
+
+   snprintf(lcd_text[0], LCD_COLUMNS+1, "%5.2f % 7.4f", ads_0_sps, ads_0.in0);
+
+  // snprintf(lcd_text[1], LCD_COLUMNS+1, "T%4d X%4d L%2d", target, inputs[1], pid6drive_loop_time);
+  snprintf(lcd_text[1], LCD_COLUMNS+1, "% 7.4f % 7.4f", ads_0.in1, ads_0.in2);
+
 
   // LCD
   if (lcd_dirty and (millis() - lcd_last_millis) > 250) {
@@ -360,7 +323,8 @@ void loop(){
     lcd_last_millis = millis();
   }
 
-  // Cap loop frequency.
-  const int remaining_millis = loop_delay_millis - ((micros()-loop_start_micros) / 1000);
-  if (remaining_millis > 0) delay(remaining_millis);
+  // Cap loop frequency and enter the fast loop.
+  while(((micros()-loop_start_micros) / 1000) < loop_delay_millis) {
+    ads_0_reads += ads_0.update();
+  }
 }
