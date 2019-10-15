@@ -88,7 +88,7 @@ bool invert[6] = {false, false, false, false, false, false};
 // Output indexes of input pin, -1 for unset.
 int8_t output_idx[6] = {-1, -1, -1, -1, -1, -1};
 
-// PID controller for outputs. Indexed by output pins.
+// PID controller for outputs. Indexed by input pins.
 HysterisisPID8bit pids[6];
 
 // Error flag.

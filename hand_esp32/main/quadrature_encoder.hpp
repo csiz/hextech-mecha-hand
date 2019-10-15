@@ -7,7 +7,11 @@
 // Inspired by code in:
 // https://makeatronics.blogspot.com/2013/02/efficiently-reading-quadrature-with.html
 
-const int8_t encoder_lookup_table[] = {0,-1,1,0,1,0,0,-1,-1,0,0,1,0,1,-1,0};
+const int8_t encoder_lookup_table[] = {
+   0, -1,  1,  0,
+   1,  0,  0, -1,
+  -1,  0,  0,  1,
+   0,  1, -1,  0};
 
 void IRAM_ATTR encoder_interrupt(void * arg);
 
@@ -18,11 +22,14 @@ struct Encoder {
   volatile bool a_value;
   volatile bool b_value;
 
-  Encoder(const gpio_num_t a, const gpio_num_t b) : a(a), b(b) {}
+  // Set the encoder to be an active LOW or active HIGH state.
+  const bool active_state;
+
+  Encoder(const gpio_num_t a, const gpio_num_t b, const bool active_state = HIGH) : a(a), b(b), active_state(active_state) {}
 
   void begin(){
-    pinMode(a, INPUT_PULLDOWN);
-    pinMode(b, INPUT_PULLDOWN);
+    pinMode(a, active_state == HIGH ? INPUT_PULLDOWN : INPUT_PULLUP);
+    pinMode(b, active_state == HIGH ? INPUT_PULLDOWN : INPUT_PULLUP);
 
     a_value = digitalRead(a);
     b_value = digitalRead(b);
@@ -43,7 +50,14 @@ void IRAM_ATTR encoder_interrupt(void * arg) {
   bool new_a_value = digitalRead(encoder.a);
   bool new_b_value = digitalRead(encoder.b);
 
-  const uint state = encoder.a_value << 3 | encoder.b_value << 2 | new_a_value << 1 | new_b_value;
+  // Flip the states if we use pull-up as it's active LOW.
+  const bool active_state = encoder.active_state;
+
+  const uint state =
+    (encoder.a_value == active_state) << 3 |
+    (encoder.b_value == active_state) << 2 |
+    (new_a_value == active_state) << 1 |
+    (new_b_value == active_state);
 
   encoder.position += encoder_lookup_table[state];
 
