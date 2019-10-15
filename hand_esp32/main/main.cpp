@@ -141,13 +141,25 @@ int targets[2] = {0, 0};
 // Enable input/output combination.
 bool enable[2] = {false, false};
 
+// Whether the controller seeks position, or only applies the timed drive.
+bool seeking[2] = {false, false};
+
 // Invert outputs so that positive error leads to negative control.
 bool invert[2] = {false, false};
 
-// Output indexes of input pin, -1 for unset.
-int8_t output_idx[2] = {-1, -1};
+// Amount of power to apply to each output (respects invert direction).
+int drive_power[2] = {0, 0};
 
-// PID controller for outputs. Indexed by input pins.
+// Amount of time (in millis) to apply power for.
+int drive_time[2] = {0, 0};
+
+// Output indexes of driver units, -1 for unset.
+int8_t output_idx[2] = {0, 1};
+
+// Input indexes  of driver units -1 for unset.
+int8_t input_idx[2] = {0, 1};
+
+// PID controller for outputs. Indexed by driver units.
 HysterisisPID8bit pids[2];
 
 // Error flag.
@@ -211,14 +223,6 @@ void onboard_pid_loop_tick(const int elapsed_millis) {
   exp_avg_analog_read(IN1, 1);
 
 
-  // Update pid controllers.
-  for (int i = 0; i < 2; i++) {
-    // Skip errored pins.
-    if(error_pin[i]) continue;
-
-    pids[i].update(inputs[i], targets[i], elapsed_millis);
-  }
-
   // Compute required values for the direction pins.
   bool direction[4] = {};
   int power[2] = {};
@@ -227,16 +231,32 @@ void onboard_pid_loop_tick(const int elapsed_millis) {
     const int idx = output_idx[i];
     if (idx == -1) continue;
 
-    const int control = pids[i].control;
+    int control = 0;
 
-    if (control == 0 or (not enable[i]) or error_pin[i]) {
+    // Apply timed pressure regardless of seeking position.
+    if (drive_time[i] > 0) {
+      drive_time[i] -= elapsed_millis;
+
+      control += drive_power[i];
+    }
+
+    // Update PID control if seeking to a position.
+    if (seeking[i] and not error_pin[i] and input_idx[i] != -1) {
+      const int position = inputs[input_idx[i]];
+
+      pids[i].update(position, targets[i], elapsed_millis);
+
+      control += pids[i].control;
+    }
+
+    if (control == 0 or not enable[i]) {
       // Free run till stop.
       power[idx] = 0;
       direction[idx*2 + 0] = false;
       direction[idx*2 + 1] = false;
     } else {
       // Run in control direction at control strength.
-      power[idx] = abs(control);
+      power[idx] = std::min(abs(control), 255);
       // Run in inverted direction by xor (!=) with the invert flag.
       direction[idx*2 + 0] = (control > 0) != invert[i];
       direction[idx*2 + 1] = (control < 0) != invert[i];
@@ -266,6 +286,11 @@ void onboard_pid_loop_tick(const int elapsed_millis) {
   digitalWrite(IN_ERROR, error_state);
 }
 
+inline int get_input(int8_t drive_idx){
+  if (drive_idx < 0 or 2 <= drive_idx) return 0;
+  if (input_idx[drive_idx] == 1) return 0;
+  return inputs[input_idx[drive_idx]];
+}
 
 // External PIDs
 // -------------
@@ -291,11 +316,22 @@ int overshoot = 8;
 
 enum struct Chip {
   NONE,
-  ONBOARD = 1,
-  DRIVE0 = 2,
-  DRIVE1 = 3,
-  DRIVE2 = 4
+  ESPMAIN = 1,
+  DRIVE_0 = 2,
+  DRIVE_1 = 3,
+  DRIVE_2 = 4
 };
+
+char * chip_name(Chip chip) {
+  switch(chip){
+    case Chip::ESPMAIN: return "espmain";
+    case Chip::DRIVE_0: return "drive-0";
+    case Chip::DRIVE_1: return "drive-1";
+    case Chip::DRIVE_2: return "drive-2";
+  }
+
+  return "undefined";
+}
 
 struct Joint {
   // Note that inputs and targets are 10bit values.
@@ -305,8 +341,11 @@ struct Joint {
   int input_index = -1;
   int output_index = -1;
 
-  // Current position and target.
+  // Current position, power, and target seeking.
   int position = 512;
+  int drive_power = 0;
+  int drive_time = 0;
+  bool seeking = false;
   int target = 512;
 
   // Minimum and maximum positions, should be set based on the physical model.

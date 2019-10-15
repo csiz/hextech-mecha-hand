@@ -82,13 +82,25 @@ int targets[6] = {0, 0, 0, 0, 0, 0};
 // Enable input/output combination.
 bool enable[6] = {false, false, false, false, false, false};
 
+// Whether the controller seeks position, or only applies the timed drive.
+bool seeking[6] = {false, false, false, false, false, false};
+
 // Invert outputs so that positive error leads to negative control.
 bool invert[6] = {false, false, false, false, false, false};
 
-// Output indexes of input pin, -1 for unset.
-int8_t output_idx[6] = {-1, -1, -1, -1, -1, -1};
+// Amount of power to apply to each output (respects invert direction).
+int drive_power[6] = {0, 0, 0, 0, 0, 0};
 
-// PID controller for outputs. Indexed by input pins.
+// Amount of time (in millis) to apply the driving power for.
+int drive_time[6] = {0, 0, 0, 0, 0, 0};
+
+// Output indexes of driver units, -1 for unset.
+int8_t output_idx[6] = {0, 1, 2, 3, 4, 5};
+
+// Input indexes  of driver units -1 for unset.
+int8_t input_idx[6] = {0, 1, 2, 3, 4, 5};
+
+// PID controller for outputs. Indexed by driver units.
 HysterisisPID8bit pids[6];
 
 // Error flag.
@@ -110,6 +122,13 @@ int i2c_no_comms_reset_millis = 500;
 // Allow 5 seconds connection time after restart.
 int i2c_time_left_to_reset_millis = 5000;
 
+
+// Get input position of drive unit.
+inline int get_input(int8_t drive_idx){
+  if (drive_idx < 0 or 6 <= drive_idx) return 0;
+  if (input_idx[drive_idx] == 1) return 0;
+  return inputs[input_idx[drive_idx]];
+}
 
 // Exponentially average analog reads so we don't get such large fluctuations.
 inline void exp_avg_analog_read(const uint8_t pin, const uint8_t i) {
@@ -214,7 +233,7 @@ void i2c_request(){
 
 #define GET_INPUT_MACRO(i) \
     case PID6Drive::GET_INPUT_##i: { \
-      write_int16(inputs[i]); \
+      write_int16(get_input(i)); \
       return; \
     }
 
@@ -242,7 +261,7 @@ void i2c_request(){
       return;
 
     case PID6Drive::GET_ALL_INPUTS:
-      for (int i = 0; i < 6; i++) write_int16(inputs[i]);
+      for (int i = 0; i < 6; i++) write_int16(get_input(i));
       return;
 
     case PID6Drive::GET_LOOP_INTERVAL:
@@ -309,6 +328,7 @@ void i2c_receive(int nr_of_bytes){
 
     EACH(ENABLE_MACRO)
 
+
 #define INVERT_MACRO(i) \
     case PID6Drive::INVERT_##i: { \
       if (nr_of_bytes != 1) { i2c_error(); return; } \
@@ -317,6 +337,7 @@ void i2c_receive(int nr_of_bytes){
     }
 
     EACH(INVERT_MACRO)
+
 
 #define OUTPUT_IDX_MACRO(i) \
     case PID6Drive::OUTPUT_IDX_##i: { \
@@ -327,6 +348,7 @@ void i2c_receive(int nr_of_bytes){
     }
 
     EACH(OUTPUT_IDX_MACRO)
+
 
 #define SET_PID_PARAM_MACRO(i, param, attr) \
     case PID6Drive::SET_PID_##param##_##i: { \
@@ -348,6 +370,28 @@ void i2c_receive(int nr_of_bytes){
     EACH(SET_PID_OVERSHOOT_MACRO)
 
 
+#define INPUT_IDX_MACRO(i) \
+    case PID6Drive::INPUT_IDX_##i: { \
+      if (nr_of_bytes != 1) { i2c_error(); return; } \
+      int8_t new_idx = static_cast<int8_t>(Wire.read()); \
+      if (new_idx >= -1 and new_idx < 6) input_idx[i] = new_idx; \
+      return; \
+    }
+
+    EACH(INPUT_IDX_MACRO)
+
+
+#define DRIVE_MACRO(i) \
+    case PID6Drive::DRIVE##i: { \
+      if (nr_of_bytes != 4) { i2c_error(); return; } \
+      drive_power[i] = read_int16(); \
+      drive_time[i] = read_int16(); \
+      return; \
+    }
+
+    EACH(DRIVE_MACRO)
+
+
 
     case PID6Drive::SET_ALL_TARGETS:
       if (nr_of_bytes != 12) { i2c_error(); return; }
@@ -358,6 +402,14 @@ void i2c_receive(int nr_of_bytes){
       if (nr_of_bytes != 1) { i2c_error(); return; }
       // Faulty reads have the value 0xFF, ignore those for the configured flag.
       configured = (Wire.read() == 1);
+      return;
+
+    case PID6Drive::DRIVE_ALL:
+      if (nr_of_bytes != 24) { i2c_error(); return; }
+      for (int i = 0; i < 6; i++) {
+        drive_power[i] = read_int16();
+        drive_time[i] = read_int16();
+      }
       return;
 
     default:
@@ -488,16 +540,6 @@ void loop() {
   exp_avg_analog_read(IN5, 5);
   interrupts();
 
-  // Update pid controllers.
-  for (int i = 0; i < 6; i++) {
-    // Skip errored pins.
-    if(error_pin[i]) continue;
-
-    // Guard against updates to the parameters or target.
-    noInterrupts();
-    pids[i].update(inputs[i], targets[i], elapsed_millis);
-    interrupts();
-  }
 
   // Compute required values for the direction pins.
   bool direction[12] = {};
@@ -507,16 +549,33 @@ void loop() {
     const int idx = output_idx[i];
     if (idx == -1) continue;
 
-    const int control = pids[i].control;
+    int control = 0;
 
-    if (control == 0 or (not enable[i]) or error_pin[i]) {
+    // Apply timed pressure regardless of seeking position.
+    if (drive_time[i] > 0) {
+      drive_time[i] -= elapsed_millis;
+
+      control += drive_power[i];
+    }
+
+    // Update PID control if seeking to a position.
+    if (seeking[i] and not error_pin[i] and input_idx[i] != -1) {
+      const int position = inputs[input_idx[i]];
+      // Guard against updates to the parameters or target.
+      noInterrupts();
+      pids[i].update(position, targets[i], elapsed_millis);
+      interrupts();
+      control += pids[i].control;
+    }
+
+    if (control == 0 or not enable[i]) {
       // Free run till stop.
       power[idx] = 0;
       direction[idx*2 + 0] = false;
       direction[idx*2 + 1] = false;
     } else {
       // Run in control direction at control strength.
-      power[idx] = abs(control);
+      power[idx] = std::min(abs(control), 255);
       // Run in inverted direction by xor (!=) with the invert flag.
       direction[idx*2 + 0] = (control > 0) != invert[i];
       direction[idx*2 + 1] = (control < 0) != invert[i];

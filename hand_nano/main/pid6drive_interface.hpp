@@ -24,11 +24,7 @@ enum class PID6Drive : byte {
   /* Invert direction of control. */
   EACH(INVERT, 0x19), // 1 byte payload
 
-  /* Set the output index for the control.
-
-  Inputs and controls are always indexed 0 to 5, this function
-  sets what ouput corresponds to each input/control.
-  */
+  /* Set the output index for the drive unit. */
   EACH(OUTPUT_IDX, 0x1F), // 1 byte payload.
 
   /* Set proportional constant per control. */
@@ -54,6 +50,13 @@ enum class PID6Drive : byte {
   /* Get error of each input. */
   EACH(GET_ERROR, 0x43), // 1 byte payload
 
+  /* Set input index for each drive unit. */
+  EACH(INPUT_IDX, 0x49), // 1 byte payload
+
+  /* Drive unit with power for a duration (milliseconds). */
+  EACH(DRIVE, 0x4F), // 4 byte payload (2 byte power, 2 byte duration in ms)
+
+
   #undef EACH
 
   /* Get whether any inputs are shorted. */
@@ -76,6 +79,9 @@ enum class PID6Drive : byte {
 
   /* Get and reset the number of i2c errors on the salve. */
   GET_RESET_I2C_ERRORS = 0x86, // 1 byte payload
+
+  /* Drive all units for duration. */
+  DRIVE_ALL = 0x87, // 24 ( == 4 * 6) byte payload (see DRIVE).
 
   /* Register value when not in use. This is -1, the default Wire.read value. */
   _UNUSED = 0xFF,
