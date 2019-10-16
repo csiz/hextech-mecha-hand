@@ -382,7 +382,7 @@ void i2c_receive(int nr_of_bytes){
 
 
 #define DRIVE_MACRO(i) \
-    case PID6Drive::DRIVE##i: { \
+    case PID6Drive::DRIVE_##i: { \
       if (nr_of_bytes != 4) { i2c_error(); return; } \
       drive_power[i] = read_int16(); \
       drive_time[i] = read_int16(); \
@@ -575,7 +575,7 @@ void loop() {
       direction[idx*2 + 1] = false;
     } else {
       // Run in control direction at control strength.
-      power[idx] = std::min(abs(control), 255);
+      power[idx] = min(abs(control), 255);
       // Run in inverted direction by xor (!=) with the invert flag.
       direction[idx*2 + 0] = (control > 0) != invert[i];
       direction[idx*2 + 1] = (control < 0) != invert[i];
