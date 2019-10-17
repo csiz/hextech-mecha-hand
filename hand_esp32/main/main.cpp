@@ -101,13 +101,16 @@ int threshold = 4;
 int overshoot = 8;
 
 
-enum struct Chip {
+enum struct Chip : int {
   NONE,
-  ESPMAIN = 1,
-  DRIVE_0 = 2,
-  DRIVE_1 = 3,
-  DRIVE_2 = 4
+  ESPMAIN,
+  DRIVE_0,
+  DRIVE_1,
+  DRIVE_2,
+  _MAXVALUE
 };
+
+const int joints_in_chip[] = {0, 2, 6, 6, 6};
 
 const char * chip_name(Chip chip) {
   switch(chip){
@@ -116,6 +119,7 @@ const char * chip_name(Chip chip) {
     case Chip::DRIVE_0: return "drive-0";
     case Chip::DRIVE_1: return "drive-1";
     case Chip::DRIVE_2: return "drive-2";
+    case Chip::_MAXVALUE: return "invalid";
   }
 
   return "undefined";
@@ -137,8 +141,8 @@ struct Joint {
   int target = 512;
 
   // Minimum and maximum positions, should be set based on the physical model.
-  int min_pos = 0;
-  int max_pos = 1023;
+  int min_pos = 5;
+  int max_pos = 1020;
 
   // If the position are inverted; ie. finger is curled when at min position instead of max.
   int inverted_position = false;
@@ -149,7 +153,9 @@ struct Joint {
 
 const Joint default_joint = {};
 
-Joint joints[20];
+#define NUM_JOINTS 20
+
+Joint joints[NUM_JOINTS];
 
 const char * joint_name(size_t index){
   switch(index){
@@ -184,6 +190,194 @@ const char * joint_name(size_t index){
   return "undefined";
 }
 
+// TODO: translate joint stuff above to actual hardware movements.
+
+// TODO: add class to pid drive interface that can store the setting and then send them at once.
+
+// User interface
+// --------------
+
+// Helper to use the int type of enums.
+template <typename E>
+constexpr typename std::underlying_type<E>::type typed(E e) noexcept {
+    return static_cast<typename std::underlying_type<E>::type>(e);
+}
+
+// The % operator in C is actually the "remainder". To cycle through
+// enum values we need the actual mod operator.
+inline int mod(int a, int b)
+{
+    int r = a % b;
+    return r < 0 ? r + b : r;
+}
+
+namespace ui {
+
+  int selected_joint = 0;
+
+  unsigned long last_update_millis = 0;
+
+  enum struct JointView : int {
+    OVERVIEW,
+    SELECT_CHIP,
+    SELECT_OUT_IDX,
+    SELECT_OUT_DIR,
+    SELECT_IN_IDX,
+    SELECT_IN_DIR,
+    SELECT_MIN,
+    SELECT_MAX,
+
+    _MAXVALUE
+  };
+
+  JointView joint_view = JointView::OVERVIEW;
+
+  void update(){
+
+    // Don't update faster than the minimum.
+    if (millis() - last_update_millis < 100) return;
+
+
+    // Input handling
+    // --------------
+
+    int change_0 = wheel_0.collect_change();
+    int change_1 = wheel_1.collect_change();
+    int presses_0 = button_0.collect_presses();
+    int presses_1 = button_1.collect_presses();
+
+    // Left button returns to overview.
+    if (presses_0) {
+      joint_view = JointView::OVERVIEW;
+    }
+
+    // Left wheel cycles joints or values.
+    if (change_0) {
+      // Currently selected joint; can be changed during overview.
+      auto & joint = joints[selected_joint];
+
+      // The mouse wheel increments twice very quickly, just count the direction.
+      int increment = change_0 > 0 ? +1 : -1;
+
+      switch(joint_view) {
+        // Cycle joints during overview.
+        case JointView::OVERVIEW: {
+          selected_joint = mod(selected_joint + increment, NUM_JOINTS);
+          break;
+        }
+        // Cycle through chips.
+        case JointView::SELECT_CHIP: {
+          joint.chip = static_cast<Chip>(mod(typed(joint.chip) + increment, typed(Chip::_MAXVALUE)));
+          break;
+        }
+        // Cycle through outpot indexes.
+        case JointView::SELECT_OUT_IDX: {
+          // -1 is a valid index, but we should only work with positive values. So add and subtract 1, but
+          // also make sure to count 1 extra value option in addition to the joints on chip.
+          joint.output_index = mod(joint.output_index + 1 + increment, joints_in_chip[typed(joint.chip)] + 1) - 1;
+          break;
+        }
+        // Cycle through output directions (motor should move up when rotating wheel up).
+        case JointView::SELECT_OUT_DIR: {
+          if (increment % 2) joint.inverted_output = not joint.inverted_output;
+          break;
+        }
+        // Cycle through input indexes.
+        case JointView::SELECT_IN_IDX: {
+          // See logic for output index.
+          joint.input_index = mod(joint.input_index + 1 + increment, joints_in_chip[typed(joint.chip)] + 1) - 1;
+          break;
+        }
+        // Cycle through input direction (position should increase when moving motor up).
+        case JointView::SELECT_IN_DIR: {
+          if (increment % 2) joint.inverted_position = not joint.inverted_position;
+          break;
+        }
+        // Set minimum position reachable by the motor.
+        case JointView::SELECT_MIN: {
+          joint.min_pos = clamp(joint.min_pos + increment * 5, 5, 1020);
+          break;
+        }
+        // Set maximum position reachable by the motor.
+        case JointView::SELECT_MAX: {
+          joint.max_pos = clamp(joint.max_pos + increment * 5, 5, 1020);
+          break;
+        }
+        // Ignore _MAXVALUE option.
+        case JointView::_MAXVALUE: break;
+      }
+    }
+
+    // Right button cycles through views.
+    if (presses_1) {
+      joint_view = static_cast<JointView>((typed(joint_view) + 1) % typed(JointView::_MAXVALUE));
+    }
+
+    // Right wheels drives unit for a short amount of time.
+    if (change_1) {
+      int direction = change_1 > 0 ? +1 : -1;
+      joints[selected_joint].drive_power = 128 * direction; // half-power
+      joints[selected_joint].drive_time = 50; // milliseconds
+    }
+
+
+    // Display text
+    // ------------
+
+    snprintf(lcd.text[0], LCD_COLUMNS+1, "#%2d %s", selected_joint, joint_name(selected_joint));
+
+    auto const& joint = joints[selected_joint];
+
+    switch(joint_view) {
+      case JointView::OVERVIEW: {
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "P: %4d T: %4d", joint.position, joint.target);
+        break;
+      }
+
+      case JointView::SELECT_CHIP: {
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "Chip: %s", chip_name(joint.chip));
+        break;
+      }
+
+      case JointView::SELECT_OUT_IDX: {
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "Out idx: %1d", joint.output_index);
+        break;
+      }
+
+      case JointView::SELECT_OUT_DIR: {
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "Out dir: %c", joint.inverted_output ? '-' : '+');
+        break;
+      }
+
+      case JointView::SELECT_IN_IDX: {
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "Pos idx: %1d", joint.input_index);
+        break;
+      }
+
+      case JointView::SELECT_IN_DIR: {
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "Pos dir: %c", joint.inverted_position ? '-' : '+');
+        break;
+      }
+
+      case JointView::SELECT_MIN: {
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "P: %4d > %4d", joint.position, joint.min_pos);
+        break;
+      }
+
+      case JointView::SELECT_MAX: {
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "P: %4d < %4d", joint.position, joint.max_pos);
+        break;
+      }
+      // Ignore _MAXVALUE option.
+      case JointView::_MAXVALUE: break;
+    }
+
+
+    // Store the update time.
+    last_update_millis = millis();
+  }
+}
+
 
 
 // Setup
@@ -206,14 +400,8 @@ void setup(){
   pinMode(VOLTAGE_IN, INPUT);
   pinMode(CURRENT_IN, INPUT);
 
-  // If still pressed we can turn on the board. Otherwise, maybe we woke from a reset,
-  // then turn off and wait for another power button press.
-  if (digitalRead(POWER_BTN)) {
-    // Turn the power supply mosfet on.
-    digitalWrite(POWER_CTRL, HIGH);
-  } else {
-    ESP.restart();
-  }
+  // Turn the power supply mosfet on.
+  digitalWrite(POWER_CTRL, HIGH);
 
   // Use the power button to shut off if held down.
   attachInterrupt(POWER_BTN, power_button_interrupt, RISING);
@@ -346,17 +534,21 @@ void loop(){
   ads_1_sps = 0.9 * ads_1_sps + 0.1 * ((ads_1_reads - ads_1_last_reads) * 1000 / elapsed_millis);
   ads_1_last_reads = ads_1_reads;
 
-  // Display
-  // -------
+  // Display and UI
+  // --------------
+
+  // Handle inputs and write the lcd text.
+  ui::update();
 
   // snprintf(lcd_text[0], LCD_COLUMNS+1, "V%4d I%4d E%3d", voltage_in, current_in, nr_wire_errors);
   // snprintf(lcd_text[0], LCD_COLUMNS+1, "%4d %4d %4d %1d", inputs[0], inputs[1], inputs[2], reverse_direction);
 
-  snprintf(lcd.text[0], LCD_COLUMNS+1, "%5.2f % 7.4f", ads_0_sps, ads_0.in0);
+  // snprintf(lcd.text[0], LCD_COLUMNS+1, "%5.2f % 7.4f", ads_0_sps, ads_0.in0);
 
   // snprintf(lcd_text[1], LCD_COLUMNS+1, "T%4d X%4d L%2d", target, inputs[1], pid6drive_loop_time);
-  snprintf(lcd.text[1], LCD_COLUMNS+1, "% 7.4f % 7.4f", ads_0.in1, ads_0.in2);
+  // snprintf(lcd.text[1], LCD_COLUMNS+1, "% 7.4f % 7.4f", ads_0.in1, ads_0.in2);
 
+  // snprintf(lcd.text[0], LCD_COLUMNS+1, "%5d %1d", wheel_0.position, wheel_0.a_value);
 
   lcd.update();
 

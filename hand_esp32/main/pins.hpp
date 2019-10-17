@@ -19,7 +19,7 @@
 #define BTN0 GPIO_NUM_0 // Note this is also the bootloader button.
 #define BTN1 GPIO_NUM_15
 #define ENC0A GPIO_NUM_25
-#define ENC0B GPIO_NUM_26
+#define ENC0B GPIO_NUM_14
 #define ENC1A GPIO_NUM_26
 #define ENC1B GPIO_NUM_5
 
