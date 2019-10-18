@@ -405,6 +405,15 @@ void i2c_receive(int nr_of_bytes){
 
     EACH(DRIVE_MACRO)
 
+#define SEEKING_MACRO(i) \
+    case PID6DriveRegister::SEEKING_##i: { \
+      if (nr_of_bytes != 1) { i2c_error(); return; } \
+      seeking[i] = static_cast<bool>(Wire.read()); \
+      return; \
+    }
+
+    EACH(SEEKING_MACRO)
+
 
 
     case PID6DriveRegister::SET_ALL_TARGETS:
@@ -447,7 +456,9 @@ void i2c_receive(int nr_of_bytes){
 #undef SET_PID_THRESHOLD_MACRO
 #undef SET_PID_OVERSHOOT_MACRO
 #undef GET_ERROR_MACRO
-
+#undef INPUT_IDX_MACRO
+#undef DRIVE_MACRO
+#undef SEEKING_MACRO
 
 // Startup
 // -------
