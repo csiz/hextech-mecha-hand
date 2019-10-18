@@ -103,7 +103,7 @@ int8_t input_idx[6] = {0, 1, 2, 3, 4, 5};
 // PID controller for outputs. Indexed by driver units.
 HysterisisPID8bit pids[6];
 
-// Error flag.
+// Error flag; indexed as inputs.
 bool error_state = false;
 bool error_pin[6] = {false, false, false, false, false, false};
 
@@ -130,6 +130,16 @@ inline int get_input(int8_t drive_idx){
   return inputs[input_idx[drive_idx]];
 }
 
+// Get error state of drive unit.
+inline int get_error(int8_t drive_idx){
+  if (drive_idx < 0 or 6 <= drive_idx) return false;
+  // Skip if not being driven by the input.
+  if (not enable[drive_idx] or not seeking[drive_idx]) return false;
+  if (input_idx[drive_idx] == -1) return false;
+  return error_pin[input_idx[drive_idx]];
+}
+
+
 // Exponentially average analog reads so we don't get such large fluctuations.
 inline void exp_avg_analog_read(const uint8_t pin, const uint8_t i) {
   int value = analogRead(pin);
@@ -137,7 +147,7 @@ inline void exp_avg_analog_read(const uint8_t pin, const uint8_t i) {
     error_pin[i] = false;
     inputs[i] = (inputs[i] * 6 + value * 4 + 5) / 10; // + 5 / 10 to round the value.
   } else {
-    error_pin[i] = enable[i]; // leave it as non-error if disabled;
+    error_pin[i] = true;
   }
 }
 
@@ -249,7 +259,7 @@ void i2c_request(){
 
 #define GET_ERROR_MACRO(i) \
     case PID6DriveRegister::GET_ERROR_##i: { \
-      Wire.write(error_pin[i]); \
+      Wire.write(get_error(i)); \
       return; \
     }
 
@@ -275,6 +285,10 @@ void i2c_request(){
     case PID6DriveRegister::GET_RESET_I2C_ERRORS:
       Wire.write(i2c_errors);
       i2c_errors = 0;
+      return;
+
+    case PID6DriveRegister::GET_ALL_ERRORS:
+      for (int i = 0; i < 6; i++) Wire.write(get_error(i));
       return;
 
     default:
@@ -559,23 +573,24 @@ void loop() {
     }
 
     // Update PID control if seeking to a position.
-    if (seeking[i] and not error_pin[i] and input_idx[i] != -1) {
+    const int in_idx = input_idx[i];
+    if (seeking[i] and in_idx != -1 and not error_pin[in_idx]) {
       // Guard against updates to the parameters or target.
       noInterrupts();
-      const int position = inputs[input_idx[i]];
+      const int position = inputs[in_idx];
       pids[i].update(position, targets[i], elapsed_millis);
       control += (invert[i] ? -1 : +1) * pids[i].control;
       interrupts();
     }
 
     // Get the output index.
-    const int idx = output_idx[i];
-    if (idx == -1) continue;
+    const int out_idx = output_idx[i];
+    if (out_idx == -1) continue;
 
     // Run in control direction at control strength.
-    power[idx] = min(abs(control), 255);
-    direction[idx*2 + 0] = control > 0;
-    direction[idx*2 + 1] = control < 0;
+    power[out_idx] = min(abs(control), 255);
+    direction[out_idx*2 + 0] = control > 0;
+    direction[out_idx*2 + 1] = control < 0;
     // Note that for 0 control the motor will run freely untill stop.
   }
 
@@ -607,7 +622,7 @@ void loop() {
 
   // Use a temporary flag so we update the global state in a single step.
   bool new_error_state = false;
-  for (int i = 0; i < 6; i++) new_error_state |= error_pin[i];
+  for (int i = 0; i < 6; i++) new_error_state |= get_error(i);
   error_state = new_error_state;
 
 
