@@ -6,7 +6,7 @@
 
 #include "esp_attr.h"
 #include "driver/gpio.h"
-#include "driver/ledc.h"
+
 
 #include "sdkconfig.h"
 
@@ -19,6 +19,23 @@
 #include "lcd.hpp"
 #include "pins.hpp"
 #include "onboardpid.hpp"
+
+// Utils
+// -----
+
+// Helper to use the int type of enums.
+template <typename E>
+constexpr typename std::underlying_type<E>::type typed(E e) noexcept {
+    return static_cast<typename std::underlying_type<E>::type>(e);
+}
+
+// The % operator in C is actually the "remainder". To cycle through
+// enum values we need the actual mod operator.
+inline int mod(int a, int b)
+{
+    int r = a % b;
+    return r < 0 ? r + b : r;
+}
 
 
 // Time keeping
@@ -82,9 +99,9 @@ LCD<LCD_COLUMNS, LCD_ROWS> lcd(LCD_ADDRESS);
 // External PIDs
 // -------------
 
-const int pid_driver_0 = PID6DRIVE_ADDRESS + 0b00;
-const int pid_driver_1 = PID6DRIVE_ADDRESS + 0b01;
-const int pid_driver_2 = PID6DRIVE_ADDRESS + 0b10;
+const int pid_driver_0 = PID6DriveRegister_ADDRESS + 0b00;
+const int pid_driver_1 = PID6DriveRegister_ADDRESS + 0b01;
+const int pid_driver_2 = PID6DriveRegister_ADDRESS + 0b10;
 
 
 // Global joint controls
@@ -110,7 +127,7 @@ enum struct Chip : int {
   _MAXVALUE
 };
 
-const int joints_in_chip[] = {0, 2, 6, 6, 6};
+const int available_on_chip[] = {0, 2, 6, 6, 6};
 
 const char * chip_name(Chip chip) {
   switch(chip){
@@ -134,9 +151,11 @@ struct Joint {
   int output_index = -1;
 
   // Current position, power, and target seeking.
-  int position = 512;
+  int position = -1;
+
   int drive_power = 0;
   int drive_time = 0;
+
   bool seeking = false;
   int target = 512;
 
@@ -150,8 +169,6 @@ struct Joint {
   // Whether output direction is inverted; ie. the PID controllers drive the motor away from the target.
   int inverted_output = false;
 };
-
-const Joint default_joint = {};
 
 #define NUM_JOINTS 20
 
@@ -190,6 +207,88 @@ const char * joint_name(size_t index){
   return "undefined";
 }
 
+
+
+void update_joints(const int elapsed_millis){
+  // TODO: get positions from the piddrivers
+
+  // Need to keep count of how many joints are assigned to each chip so
+  // we know the index on the chip.
+  int assigned_on_chip[] = {0, 0, 0, 0, 0};
+
+
+  for (int i = 0; i < NUM_JOINTS; i++){
+    auto & joint = joints[i];
+
+
+    // Count how many are assigned to the current chip.
+    int & assigned = assigned_on_chip[typed(joint.chip)];
+    assigned += 1;
+    const int available = available_on_chip[typed(joint.chip)];
+
+    // Skip this joint if not enough space on the chip.
+    if (assigned > available) {
+      // Reset position to invalid.
+      joint.position = -1;
+      continue;
+    }
+
+    // Chip indexing starts at 0.
+    int index_on_chip = assigned - 1;
+
+
+    switch(joint.chip) {
+      // If on the main chip, then we can immediately update values.
+      case Chip::ESPMAIN: {
+        // Enable if the joint is assigned to the chip.
+        onboardpid::enable[index_on_chip] = true;
+        // Set indexes.
+        onboardpid::input_idx[index_on_chip] = joint.input_index;
+        onboardpid::output_idx[index_on_chip] = joint.output_index;
+        // Invert power only if output is inverted.
+        onboardpid::drive_power[index_on_chip] = joint.drive_power * (joint.inverted_output ? -1 : +1);
+        onboardpid::drive_time[index_on_chip] = joint.drive_time;
+        // Set seeking target.
+        onboardpid::seeking[index_on_chip] = joint.seeking;
+        onboardpid::targets[index_on_chip] = joint.target;
+        // Invert the control if the output and position are unsynced.
+        onboardpid::invert[index_on_chip] = (joint.inverted_output != joint.inverted_position);
+
+
+        // Grab the position (after we've applied the settings).
+        joint.position = onboardpid::get_input(index_on_chip);
+        break;
+      }
+
+      case Chip::DRIVE_0:
+      case Chip::DRIVE_1:
+      case Chip::DRIVE_2:
+      // TODO: handle driver chips
+
+      // Nothing to do for NONE and _MAXVALUE
+      default: break;
+    }
+
+
+  }
+
+
+  // Disable motors that are not assigned.
+  for (int i = assigned_on_chip[typed(Chip::ESPMAIN)]; i < available_on_chip[typed(Chip::ESPMAIN)]; i++){
+    onboardpid::enable[i] = false;
+  }
+
+  // TODO: also disable stuff for the DRIVER chips.
+
+
+  // Update remaining drive times.
+  for (int i = 0; i < NUM_JOINTS; i++){
+    auto & drive_time = joints[i].drive_time;
+    if (drive_time > elapsed_millis) drive_time -= elapsed_millis;
+    else drive_time = 0;
+  }
+}
+
 // TODO: translate joint stuff above to actual hardware movements.
 
 // TODO: add class to pid drive interface that can store the setting and then send them at once.
@@ -197,19 +296,6 @@ const char * joint_name(size_t index){
 // User interface
 // --------------
 
-// Helper to use the int type of enums.
-template <typename E>
-constexpr typename std::underlying_type<E>::type typed(E e) noexcept {
-    return static_cast<typename std::underlying_type<E>::type>(e);
-}
-
-// The % operator in C is actually the "remainder". To cycle through
-// enum values we need the actual mod operator.
-inline int mod(int a, int b)
-{
-    int r = a % b;
-    return r < 0 ? r + b : r;
-}
 
 namespace ui {
 
@@ -235,7 +321,7 @@ namespace ui {
   void update(){
 
     // Don't update faster than the minimum.
-    if (millis() - last_update_millis < 100) return;
+    if (millis() - last_update_millis < 200) return;
 
 
     // Input handling
@@ -274,7 +360,7 @@ namespace ui {
         case JointView::SELECT_OUT_IDX: {
           // -1 is a valid index, but we should only work with positive values. So add and subtract 1, but
           // also make sure to count 1 extra value option in addition to the joints on chip.
-          joint.output_index = mod(joint.output_index + 1 + increment, joints_in_chip[typed(joint.chip)] + 1) - 1;
+          joint.output_index = mod(joint.output_index + 1 + increment, available_on_chip[typed(joint.chip)] + 1) - 1;
           break;
         }
         // Cycle through output directions (motor should move up when rotating wheel up).
@@ -285,7 +371,7 @@ namespace ui {
         // Cycle through input indexes.
         case JointView::SELECT_IN_IDX: {
           // See logic for output index.
-          joint.input_index = mod(joint.input_index + 1 + increment, joints_in_chip[typed(joint.chip)] + 1) - 1;
+          joint.input_index = mod(joint.input_index + 1 + increment, available_on_chip[typed(joint.chip)] + 1) - 1;
           break;
         }
         // Cycle through input direction (position should increase when moving motor up).
@@ -317,7 +403,7 @@ namespace ui {
     if (change_1) {
       int direction = change_1 > 0 ? +1 : -1;
       joints[selected_joint].drive_power = 128 * direction; // half-power
-      joints[selected_joint].drive_time = 50; // milliseconds
+      joints[selected_joint].drive_time = 100; // milliseconds
     }
 
 
@@ -350,12 +436,12 @@ namespace ui {
       }
 
       case JointView::SELECT_IN_IDX: {
-        snprintf(lcd.text[1], LCD_COLUMNS+1, "Pos idx: %1d", joint.input_index);
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "P: %4d idx: %1d", joint.position, joint.input_index);
         break;
       }
 
       case JointView::SELECT_IN_DIR: {
-        snprintf(lcd.text[1], LCD_COLUMNS+1, "Pos dir: %c", joint.inverted_position ? '-' : '+');
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "P: %4d dir: %c", joint.position, joint.inverted_position ? '-' : '+');
         break;
       }
 
@@ -384,10 +470,10 @@ namespace ui {
 // -----
 
 void setup_piddrive(const byte address) {
-  write_int16_to(address, PID6Drive::SET_PID_P_1, 1);
-  write_to(address, PID6Drive::OUTPUT_IDX_1, 0);
-  write_to(address, PID6Drive::ENABLE_1, true);
-  write_to(address, PID6Drive::SET_CONFIGURED, true);
+  write_int16_to(address, PID6DriveRegister::SET_PID_P_1, 1);
+  write_to(address, PID6DriveRegister::OUTPUT_IDX_1, 0);
+  write_to(address, PID6DriveRegister::ENABLE_1, true);
+  write_to(address, PID6DriveRegister::SET_CONFIGURED, true);
 }
 
 void setup(){
@@ -480,6 +566,11 @@ void loop(){
   Wire.begin();
 
 
+  // Joint control
+  // -------------
+
+  update_joints(elapsed_millis);
+
   // On-board PID
   // ------------
 
@@ -495,20 +586,20 @@ void loop(){
   // -----------
 
   // byte configured_0 = 0xFF;
-  // read_from(pid_driver_0, PID6Drive::GET_CONFIGURED, configured_0);
+  // read_from(pid_driver_0, PID6DriveRegister::GET_CONFIGURED, configured_0);
 
   // if (configured_0 != 1) setup_piddrive(pid_driver_0);
 
-  // read_int16_from(pid_driver_0, PID6Drive::GET_INPUT_0, inputs[0]);
-  // read_int16_from(pid_driver_0, PID6Drive::GET_INPUT_1, inputs[1]);
-  // read_int16_from(pid_driver_0, PID6Drive::GET_INPUT_2, inputs[2]);
+  // read_int16_from(pid_driver_0, PID6DriveRegister::GET_INPUT_0, inputs[0]);
+  // read_int16_from(pid_driver_0, PID6DriveRegister::GET_INPUT_1, inputs[1]);
+  // read_int16_from(pid_driver_0, PID6DriveRegister::GET_INPUT_2, inputs[2]);
 
-  // write_int16_to(pid_driver_0, PID6Drive::SET_TARGET_1, 512);
+  // write_int16_to(pid_driver_0, PID6DriveRegister::SET_TARGET_1, 512);
 
-  // write_to(pid_driver_0, PID6Drive::INVERT_1, false);
+  // write_to(pid_driver_0, PID6DriveRegister::INVERT_1, false);
 
-  // int pid6drive_loop_time = -1;
-  // read_int16_from(pid_driver_0, PID6Drive::GET_LOOP_INTERVAL, pid6drive_loop_time);
+  // int PID6DriveRegister_loop_time = -1;
+  // read_int16_from(pid_driver_0, PID6DriveRegister::GET_LOOP_INTERVAL, PID6DriveRegister_loop_time);
 
 
 
@@ -545,7 +636,7 @@ void loop(){
 
   // snprintf(lcd.text[0], LCD_COLUMNS+1, "%5.2f % 7.4f", ads_0_sps, ads_0.in0);
 
-  // snprintf(lcd_text[1], LCD_COLUMNS+1, "T%4d X%4d L%2d", target, inputs[1], pid6drive_loop_time);
+  // snprintf(lcd_text[1], LCD_COLUMNS+1, "T%4d X%4d L%2d", target, inputs[1], PID6DriveRegister_loop_time);
   // snprintf(lcd.text[1], LCD_COLUMNS+1, "% 7.4f % 7.4f", ads_0.in1, ads_0.in2);
 
   // snprintf(lcd.text[0], LCD_COLUMNS+1, "%5d %1d", wheel_0.position, wheel_0.a_value);

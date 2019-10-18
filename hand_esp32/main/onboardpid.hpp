@@ -3,6 +3,11 @@
 #include "pins.hpp"
 #include "pid.hpp"
 
+#include "driver/ledc.h"
+
+#include "Arduino.h"
+
+
 namespace onboardpid {
 
   // ADC value where it's likely a short (at 10 bit resolution).
@@ -23,10 +28,10 @@ namespace onboardpid {
   // Whether the controller seeks position, or only applies the timed drive.
   bool seeking[2] = {false, false};
 
-  // Invert outputs so that positive error leads to negative control.
+  // Invert seeking outputs so that positive error leads to negative control.
   bool invert[2] = {false, false};
 
-  // Amount of power to apply to each output (respects invert direction).
+  // Amount of power to apply to each output (doesn't respect invert direction).
   int drive_power[2] = {0, 0};
 
   // Amount of time (in millis) to apply power for.
@@ -54,7 +59,7 @@ namespace onboardpid {
       error_pin[i] = false;
       inputs[i] = (inputs[i] * 6 + value * 4 + 5) / 10; // + 5 / 10 to round the value.
     } else {
-      error_pin[i] = true;
+      error_pin[i] = enable[i]; // leave it as non-error if disabled
     }
   }
 
@@ -79,12 +84,10 @@ namespace onboardpid {
     inputs[1] = analogRead(IN1);
 
     // Power control pins.
-    pinMode(PWM0, OUTPUT);
-    digitalWrite(PWM0, 0);
-    pinMode(PWM1, OUTPUT);
-    digitalWrite(PWM1, 0);
-    // TODO: analogWrite doesn't seem to be available, probably have to
-    // use the ledc.h interface of the ESP32.
+    ledcSetup(PWM0_C, 1000.0, 8);
+    ledcSetup(PWM1_C, 1000.0, 8);
+    ledcAttachPin(PWM0, PWM0_C);
+    ledcAttachPin(PWM1, PWM1_C);
 
     // Error led pin.
     pinMode(IN_ERROR, OUTPUT);
@@ -102,13 +105,13 @@ namespace onboardpid {
     exp_avg_analog_read(IN1, 1);
 
 
-    // Compute required values for the direction pins.
+    // Compute required values for the direction pins; initialize to 0 power.
     bool direction[4] = {};
     int power[2] = {};
 
     for (int i = 0; i < 2; i++) {
-      const int idx = output_idx[i];
-      if (idx == -1) continue;
+      // Skip if unit not enabled.
+      if (not enable[i]) continue;
 
       int control = 0;
 
@@ -122,24 +125,19 @@ namespace onboardpid {
       // Update PID control if seeking to a position.
       if (seeking[i] and not error_pin[i] and input_idx[i] != -1) {
         const int position = inputs[input_idx[i]];
-
         pids[i].update(position, targets[i], elapsed_millis);
-
-        control += pids[i].control;
+        control += (invert[i] ? -1 : +1) * pids[i].control;
       }
 
-      if (control == 0 or not enable[i]) {
-        // Free run till stop.
-        power[idx] = 0;
-        direction[idx*2 + 0] = false;
-        direction[idx*2 + 1] = false;
-      } else {
-        // Run in control direction at control strength.
-        power[idx] = min(abs(control), 255);
-        // Run in inverted direction by xor (!=) with the invert flag.
-        direction[idx*2 + 0] = (control > 0) != invert[i];
-        direction[idx*2 + 1] = (control < 0) != invert[i];
-      }
+      // Get the output index.
+      const int idx = output_idx[i];
+      if (idx == -1) continue;
+
+      // Run in control direction at control strength.
+      power[idx] = min(abs(control), 255);
+      direction[idx*2 + 0] = control > 0;
+      direction[idx*2 + 1] = control < 0;
+      // Note that for 0 control the motor will run freely untill stop.
     }
 
     // Set pin outputs to computed values.
@@ -149,11 +147,8 @@ namespace onboardpid {
     digitalWrite(DIR3, direction[3]);
 
     // Write pulse width modulation levels.
-    // TODO: use the ledc.h interface.
-    // analogWrite(PWM0, power[0]);
-    // analogWrite(PWM1, power[1]);
-    (void)power;
-
+    ledcWrite(PWM0_C, power[0]);
+    ledcWrite(PWM1_C, power[1]);
 
     // Error handling
     // --------------
@@ -167,8 +162,8 @@ namespace onboardpid {
   }
 
   inline int get_input(int8_t drive_idx){
-    if (drive_idx < 0 or 2 <= drive_idx) return 0;
-    if (input_idx[drive_idx] == 1) return 0;
+    if (drive_idx < 0 or 2 <= drive_idx) return -1;
+    if (input_idx[drive_idx] == -1) return -1;
     return inputs[input_idx[drive_idx]];
   }
 

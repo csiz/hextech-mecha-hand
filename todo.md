@@ -4,15 +4,15 @@ Fixme
 [ ] Connect the pid drive shift register to the reset line. After a reset the arduino pulls the pins high, which causes the motors to move if the shift register outputs are also high.
 [ ] Fix the PID drive arduino programming deal. The arduino powers the motor drivers when connected to 5V internally, this causes the motors to work. Need to pull the PWM or RX/TX output
 signals low to prevent motors working during programming.
-[ ] Fix the main board encoders. They need a stronger pull up resistor (10K ohm), otherwise the esp32 keeps interrupting itself.
-
+[ ] Fix the main board encoders. They need a stronger pull up resistor (10K ohm), otherwise the esp32 keeps interrupting itself. Also a low pass filter or something.
+[ ] Change voltage to 7V4, cause I misremembered.
 
 ESP
 ---
 
-[ ] Select input to which joint.
-[ ] Select output to which joint.
-[ ] Select min and max of each joint target.
+[v] Select input to which joint.
+[v] Select output to which joint.
+[v] Select min and max of each joint target.
 [ ] Same as above, but for the I2C nano joints.
 [ ] Connect to wifi. If I can, go straight via the BLE api.
 [ ] Websocket with joint position, target, min, max via json.
@@ -33,12 +33,12 @@ Since motor capacitance will charge up on power-up.
 Nano
 ----
 
-[x] Select which input to which joint.
+[v] Select which input to which joint.
 [v] Select which output to which joint.
 [v] PID drive joint to target.
 [v] Set P, I, D, threshold, overshoot, direction settings for each joint.
-[ ] Drive joint for duration at power.
-[ ] Set different 0 output point to allow some way of adding pressure with the motors.
+[v] Drive joint for duration at power.
+[v] Set different 0 output point to allow some way of adding pressure with the motors.
 [v] Get joint position.
 [v] 2 input pins for address selection so only need 1 program to upload.
 [v] Error handling for the I2C.
@@ -79,8 +79,3 @@ Project
 [ ] Document assembly.
 [ ] Publish first working version.
 
-
-Misc
-----
-
-[ ] Change voltage to 7V4, cause I misremembered.

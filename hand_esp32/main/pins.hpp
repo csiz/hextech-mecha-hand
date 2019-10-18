@@ -2,6 +2,7 @@
 
 #include "Esp.h"
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 
 // Power
 #define POWER_CTRL GPIO_NUM_2
@@ -39,3 +40,6 @@
 #define DIR3 GPIO_NUM_33
 #define PWM0 GPIO_NUM_17
 #define PWM1 GPIO_NUM_16
+// ESP32 PWM works on channels, so need to also define thouse.
+#define PWM0_C LEDC_CHANNEL_0
+#define PWM1_C LEDC_CHANNEL_1
