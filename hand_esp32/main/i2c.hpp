@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Wire.h"
+
 int nr_wire_errors = 0;
 
 inline int read_int16() {

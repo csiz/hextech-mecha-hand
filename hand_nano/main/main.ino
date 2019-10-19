@@ -5,7 +5,7 @@
 #include <utility/twi.h>
 
 #include "pid.hpp"
-#include "pid6drive_interface.hpp"
+#include "pid6drive_registers.hpp"
 
 
 // Analog inputs.

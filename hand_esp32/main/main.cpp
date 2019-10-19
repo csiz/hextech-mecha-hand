@@ -99,9 +99,9 @@ LCD<LCD_COLUMNS, LCD_ROWS> lcd(LCD_ADDRESS);
 // External PIDs
 // -------------
 
-const int pid_driver_0 = PID6DriveRegister_ADDRESS + 0b00;
-const int pid_driver_1 = PID6DriveRegister_ADDRESS + 0b01;
-const int pid_driver_2 = PID6DriveRegister_ADDRESS + 0b10;
+PID6Drive pid6drive_0(PID6DRIVE_ADDRESS + 0b00);
+PID6Drive pid6drive_1(PID6DRIVE_ADDRESS + 0b01);
+PID6Drive pid6drive_2(PID6DRIVE_ADDRESS + 0b02);
 
 
 // Global joint controls
@@ -109,7 +109,6 @@ const int pid_driver_2 = PID6DriveRegister_ADDRESS + 0b10;
 
 
 // PID parameters
-// TODO: set the arduino slave parameters.
 int p = 2;
 int i_time = 2000; // millis
 // Capacitor adds 10ms momentum, and exp avg adds ~20ms lag.
@@ -210,7 +209,6 @@ const char * joint_name(size_t index){
 
 
 void update_joints(const int elapsed_millis){
-  // TODO: get positions from the piddrivers
 
   // Need to keep count of how many joints are assigned to each chip so
   // we know the index on the chip.
@@ -237,9 +235,15 @@ void update_joints(const int elapsed_millis){
     int index_on_chip = assigned - 1;
 
 
+    PID6Drive * pid6drive_chip = nullptr;
+
+    // Invert the control if the output and position are unsynced.
+    bool joint_inverted_control = (joint.inverted_output != joint.inverted_position);
+
+
     switch(joint.chip) {
       // If on the main chip, then we can immediately update values.
-      case Chip::ESPMAIN: {
+      case Chip::ESPMAIN:
         // Enable if the joint is assigned to the chip.
         onboardpid::enable[index_on_chip] = true;
         // Set indexes.
@@ -251,19 +255,41 @@ void update_joints(const int elapsed_millis){
         // Set seeking target.
         onboardpid::seeking[index_on_chip] = joint.seeking;
         onboardpid::targets[index_on_chip] = joint.target;
-        // Invert the control if the output and position are unsynced.
-        onboardpid::invert[index_on_chip] = (joint.inverted_output != joint.inverted_position);
 
+        onboardpid::invert[index_on_chip] = joint_inverted_control;
 
         // Grab the position (after we've applied the settings).
         joint.position = onboardpid::get_input(index_on_chip);
         break;
-      }
 
+
+      // The chip classes handle sending data, we just need to set the proper values.
       case Chip::DRIVE_0:
+        pid6drive_chip = &pid6drive_0;
+        // fallthrough
       case Chip::DRIVE_1:
+        pid6drive_chip = &pid6drive_1;
+        // fallthrough
       case Chip::DRIVE_2:
-      // TODO: handle driver chips
+        pid6drive_chip = &pid6drive_2;
+        // fallthrough
+
+        // Config values.
+        pid6drive_chip->config.enable[index_on_chip] = true;
+        pid6drive_chip->config.input_index[index_on_chip] = joint.input_index;
+        pid6drive_chip->config.output_index[index_on_chip] = joint.output_index;
+        pid6drive_chip->config.seeking[index_on_chip] = joint.seeking;
+        pid6drive_chip->config.invert[index_on_chip] = joint_inverted_control;
+
+        // Control values.
+        pid6drive_chip->targets[index_on_chip] = joint.target;
+        pid6drive_chip->drive_power[index_on_chip] = joint.drive_power * (joint.inverted_output ? -1 : +1);
+        pid6drive_chip->drive_time[index_on_chip] = joint.drive_time;
+
+        // Position feedback.
+        joint.position = pid6drive_chip->positions[index_on_chip];
+
+        break;
 
       // Nothing to do for NONE and _MAXVALUE
       default: break;
@@ -278,8 +304,16 @@ void update_joints(const int elapsed_millis){
     onboardpid::enable[i] = false;
   }
 
-  // TODO: also disable stuff for the DRIVER chips.
-
+  // Same for the external pid drivers.
+  for (int i = assigned_on_chip[typed(Chip::DRIVE_0)]; i < available_on_chip[typed(Chip::DRIVE_0)]; i++){
+    pid6drive_0.config.enable[i] = false;
+  }
+  for (int i = assigned_on_chip[typed(Chip::DRIVE_1)]; i < available_on_chip[typed(Chip::DRIVE_1)]; i++){
+    pid6drive_1.config.enable[i] = false;
+  }
+  for (int i = assigned_on_chip[typed(Chip::DRIVE_2)]; i < available_on_chip[typed(Chip::DRIVE_2)]; i++){
+    pid6drive_2.config.enable[i] = false;
+  }
 
   // Update remaining drive times.
   for (int i = 0; i < NUM_JOINTS; i++){
@@ -289,9 +323,6 @@ void update_joints(const int elapsed_millis){
   }
 }
 
-// TODO: translate joint stuff above to actual hardware movements.
-
-// TODO: add class to pid drive interface that can store the setting and then send them at once.
 
 // User interface
 // --------------
@@ -469,13 +500,6 @@ namespace ui {
 // Setup
 // -----
 
-void setup_piddrive(const byte address) {
-  write_int16_to(address, PID6DriveRegister::SET_PID_P_1, 1);
-  write_to(address, PID6DriveRegister::OUTPUT_IDX_1, 0);
-  write_to(address, PID6DriveRegister::ENABLE_1, true);
-  write_to(address, PID6DriveRegister::SET_CONFIGURED, true);
-}
-
 void setup(){
   // Power
   // -----
@@ -539,9 +563,14 @@ void setup(){
   // Wait for the arduino to start and initialize.
   delay(500);
 
-  setup_piddrive(pid_driver_0);
-  setup_piddrive(pid_driver_1);
-  setup_piddrive(pid_driver_2);
+
+  pid6drive_0.config.set_all_pid_params(p, i_time, d_time, threshold, overshoot);
+  pid6drive_1.config.set_all_pid_params(p, i_time, d_time, threshold, overshoot);
+  pid6drive_2.config.set_all_pid_params(p, i_time, d_time, threshold, overshoot);
+
+  pid6drive_0.configure();
+  pid6drive_1.configure();
+  pid6drive_2.configure();
 }
 
 
@@ -571,36 +600,17 @@ void loop(){
 
   update_joints(elapsed_millis);
 
-  // On-board PID
-  // ------------
-
-  // TODO: set the on-board PID target from the gloabl targets.
+  // Motor drivers
+  // -------------
 
   // Update the inputs and outputs of the on-board PID.
   onboardpid::loop_tick(elapsed_millis);
-
-  // TODO: set the global inputs from the on-board PID inputs.
-
+  pid6drive_0.update(elapsed_millis);
+  pid6drive_1.update(elapsed_millis);
+  pid6drive_2.update(elapsed_millis);
 
   // Experiments
   // -----------
-
-  // byte configured_0 = 0xFF;
-  // read_from(pid_driver_0, PID6DriveRegister::GET_CONFIGURED, configured_0);
-
-  // if (configured_0 != 1) setup_piddrive(pid_driver_0);
-
-  // read_int16_from(pid_driver_0, PID6DriveRegister::GET_INPUT_0, inputs[0]);
-  // read_int16_from(pid_driver_0, PID6DriveRegister::GET_INPUT_1, inputs[1]);
-  // read_int16_from(pid_driver_0, PID6DriveRegister::GET_INPUT_2, inputs[2]);
-
-  // write_int16_to(pid_driver_0, PID6DriveRegister::SET_TARGET_1, 512);
-
-  // write_to(pid_driver_0, PID6DriveRegister::INVERT_1, false);
-
-  // int PID6DriveRegister_loop_time = -1;
-  // read_int16_from(pid_driver_0, PID6DriveRegister::GET_LOOP_INTERVAL, PID6DriveRegister_loop_time);
-
 
 
 
@@ -631,15 +641,9 @@ void loop(){
   // Handle inputs and write the lcd text.
   ui::update();
 
+  // TODO: remove
   // snprintf(lcd_text[0], LCD_COLUMNS+1, "V%4d I%4d E%3d", voltage_in, current_in, nr_wire_errors);
-  // snprintf(lcd_text[0], LCD_COLUMNS+1, "%4d %4d %4d %1d", inputs[0], inputs[1], inputs[2], reverse_direction);
 
-  // snprintf(lcd.text[0], LCD_COLUMNS+1, "%5.2f % 7.4f", ads_0_sps, ads_0.in0);
-
-  // snprintf(lcd_text[1], LCD_COLUMNS+1, "T%4d X%4d L%2d", target, inputs[1], PID6DriveRegister_loop_time);
-  // snprintf(lcd.text[1], LCD_COLUMNS+1, "% 7.4f % 7.4f", ads_0.in1, ads_0.in2);
-
-  // snprintf(lcd.text[0], LCD_COLUMNS+1, "%5d %1d", wheel_0.position, wheel_0.a_value);
 
   lcd.update();
 
