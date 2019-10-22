@@ -7,7 +7,8 @@ signals low to prevent motors working during programming.
 [ ] Fix the main board encoders. They need a stronger pull up resistor (10K ohm), otherwise the esp32 keeps interrupting itself. Also a low pass filter or something.
 [ ] Change voltage to 7V4, cause I misremembered.
 [ ] ! Fix the address pins on the nano. Dual use doesn't work if there's a LED on the same pin. Also avoid pin 13 as it has the internal LED. Increasing the LED resistance to 10K ohm works, but it's a bit dodgy.
-
+[ ] Not a good idea to connect the main chip 5V to the driver chip 5V, not the same 5V level because of different regulators. Also since a reset of
+the main chip shuts down current for the driver chips, we might not need a reset line? TLDR: Redesign connectors to be more streamline.
 
 ESP
 ---

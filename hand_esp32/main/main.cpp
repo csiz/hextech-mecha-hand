@@ -572,9 +572,7 @@ void setup(){
   pid6drive_0.configure();
   pid6drive_1.configure();
   pid6drive_2.configure();
-
 }
-
 
 
 
