@@ -4,6 +4,10 @@
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 
+// I2C pins
+#define SDA_PIN GPIO_NUM_21
+#define SCL_PIN GPIO_NUM_22
+
 // Power
 #define POWER_CTRL GPIO_NUM_2
 #define POWER_BTN GPIO_NUM_4

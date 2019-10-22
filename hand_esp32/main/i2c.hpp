@@ -4,13 +4,12 @@
 
 int nr_wire_errors = 0;
 
-inline int read_int16() {
-  return static_cast<int>(Wire.read()) << 8 | Wire.read();
+inline int16_t read_int16() {
+  return static_cast<int16_t>(Wire.read()) << 8 | Wire.read();
 }
 
-inline void write_int16(const int value){
-  Wire.write(value >> 8);
-  Wire.write(value & 0xFF);
+inline size_t write_int16(const int16_t value){
+  return Wire.write(value >> 8) + Wire.write(value & 0xFF);
 }
 
 template<typename Reg>

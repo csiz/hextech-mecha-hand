@@ -18,14 +18,14 @@ struct PID6DriveConfig {
   bool enable[6];
   bool invert[6];
   bool seeking[6];
-  int output_index[6];
-  int input_index[6];
+  int8_t output_index[6];
+  int8_t input_index[6];
 
-  int pid_p[6];
-  int pid_i_time[6];
-  int pid_d_time[6];
-  int pid_threshold[6];
-  int pid_overshoot[6];
+  int16_t pid_p[6];
+  int16_t pid_i_time[6];
+  int16_t pid_d_time[6];
+  int16_t pid_threshold[6];
+  int16_t pid_overshoot[6];
 
   PID6DriveConfig(){
     const HysterisisPID8bit pid_defaults = {};
@@ -46,11 +46,11 @@ struct PID6DriveConfig {
   }
 
   void set_all_pid_params(
-    const int p /* 8bit out / 10bit in (max 5bit value) */,
-    const int i_time /* millis */,
-    const int d_time /* millis */,
-    const int threshold /* 10bit in */,
-    const int overshoot /* 10bit in */
+    const int16_t p /* 8bit out / 10bit in (max 5bit value) */,
+    const int16_t i_time /* millis */,
+    const int16_t d_time /* millis */,
+    const int16_t threshold /* 10bit in */,
+    const int16_t overshoot /* 10bit in */
   ){
     for (int i = 0; i < 6; i++){
       pid_p[i] = p;
@@ -71,12 +71,15 @@ public:
   PID6DriveConfig config;
 
   int targets[6] = {};
+  // TODO: Start positions at -1
   int positions[6] = {};
   int errors[6] = {};
   int drive_power[6] = {};
   int drive_time[6] = {};
   int loop_interval = -1;
-  int i2c_errors = 0;
+  int drive_i2c_errors = 0;
+
+  int communication_errors = 0;
 
   // Chip I2C address.
   const byte address;
@@ -96,8 +99,8 @@ public:
 
 #define CHECK_AND_SEND(field, register, write_func) \
       if(chip_config.field[i] != config.field[i]) { \
-        write_func(address, typed_add(PID6DriveRegister::register##_0, i), config.field[i]); \
-        chip_config.field[i] = config.field[i]; \
+        if(write_func(address, typed_add(PID6DriveRegister::register##_0, i), config.field[i])) communication_errors += 1; \
+        else chip_config.field[i] = config.field[i]; \
       }
 
       CHECK_AND_SEND(enable, ENABLE, write_to);
@@ -116,38 +119,41 @@ public:
 
     }
 
-    write_to(address, PID6DriveRegister::SET_CONFIGURED, true);
+    if(write_to(address, PID6DriveRegister::SET_CONFIGURED, 1)) communication_errors += 1;
   }
 
   // The chip is unconfigured at startup after a potential restart. Check every
   // loop iteration if it restarted, and reconfigure.
-  bool check_configured(){
+  void check_and_configure(){
+    // Read the configuration flag.
     byte configured = 0xFF;
-    read_from(pid_driver_0, PID6DriveRegister::GET_CONFIGURED, configured_0);
-    return configured_0 == 1;
+    if(read_from(address, PID6DriveRegister::GET_CONFIGURED, configured)) communication_errors += 1;
+    // Reset chip config values to default after an assumed chip restart; ignore comm errors though.
+    else if (configured != 1) chip_config = PID6DriveConfig();
+
+    // Configure chip using the current config values, if any are different than chip values.
+    configure();
   }
 
-  void update(const int elapsed_millis) {
 
-    // Check if the chip restarted and reconfigure.
-    if (not check_configured()) {
-      // Reset chip configuration to default values after an assumed chip restart.
-      chip_config = PID6DriveConfig();
-      configure();
-    }
-
+  void read_values() {
     // Read how long a loop takes on the driver chip.
-    read_int16_from(address, PID6DriveRegister::GET_LOOP_INTERVAL, loop_interval);
+    if(read_int16_from(address, PID6DriveRegister::GET_LOOP_INTERVAL, loop_interval)) communication_errors += 1;
+
     // Get any new i2c errors.
     byte new_i2c_errors = 0xFF;
-    read_from(address, PID6DriveRegister::GET_RESET_I2C_ERRORS, new_i2c_errors);
-    if (new_i2c_errors != 0xFF) i2c_errors += new_i2c_errors;
+    if(read_from(address, PID6DriveRegister::GET_RESET_I2C_ERRORS, new_i2c_errors)) communication_errors += 1;
+    else if (new_i2c_errors != 0xFF) drive_i2c_errors += new_i2c_errors;
+
+    if(read_errors()) communication_errors += 1;
+    if(read_positions()) communication_errors += 1;
+  }
 
 
-    if(read_errors()) Serial.printf("Can't read errors on driver: 0x%02x\n", address);
-    if(read_positions()) Serial.printf("No position on driver: 0x%02x\n", address);
-    if(send_targets()) Serial.printf("No targets on driver: 0x%02x\n", address);
-    if(send_drive_commands()) Serial.printf("No powering of driver: 0x%02x\n", address);
+  void send_commands(const int elapsed_millis) {
+
+    if(send_targets()) communication_errors += 1;
+    if(send_drive_commands()) communication_errors += 1;
 
     // Subtract elasped time from reamining drive times.
     for (int i = 0; i < 6; i++){
@@ -158,7 +164,7 @@ public:
 
 
   bool read_positions(){
-    Wire.beginTransmission()ledcWrite
+    Wire.beginTransmission(address);
     Wire.write(static_cast<byte>(PID6DriveRegister::GET_ALL_INPUTS));
     if(Wire.endTransmission(false)) {
       nr_wire_errors += 1;
@@ -176,7 +182,7 @@ public:
   }
 
   bool read_errors(){
-    Wire.beginTransmission()ledcWrite
+    Wire.beginTransmission(address);
     Wire.write(static_cast<byte>(PID6DriveRegister::GET_ALL_ERRORS));
     if(Wire.endTransmission(false)) {
       nr_wire_errors += 1;

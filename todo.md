@@ -6,6 +6,8 @@ Fixme
 signals low to prevent motors working during programming.
 [ ] Fix the main board encoders. They need a stronger pull up resistor (10K ohm), otherwise the esp32 keeps interrupting itself. Also a low pass filter or something.
 [ ] Change voltage to 7V4, cause I misremembered.
+[ ] ! Fix the address pins on the nano. Dual use doesn't work if there's a LED on the same pin. Also avoid pin 13 as it has the internal LED. Increasing the LED resistance to 10K ohm works, but it's a bit dodgy.
+
 
 ESP
 ---

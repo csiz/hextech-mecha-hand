@@ -70,7 +70,7 @@ unsigned long last_micros;
 unsigned long loop_interval_micros = 0;
 
 // I2C address.
-int i2c_address = PID6DriveRegister_ADDRESS;
+int i2c_address = PID6DRIVE_ADDRESS;
 byte current_register = 0xFF;
 
 // Input positions, 10bits.
@@ -187,7 +187,14 @@ void send_sr_bits(size_t zeroes, bool bits[N]) {
 static volatile uint8_t twi_state;
 
 inline void i2c_reset() {
-  // We can't use Wire.end function because it sets the SDA/SCL pins to 0.
+  noInterrupts();
+
+  // Reset current register.
+  current_register = 0xFF;
+
+  // We can't use Wire.end function because it sets the SDA/SCL pins
+  // to 0. And probably messes the other i2c devices.
+
 
   // Atmega328P datasheet, page 199:
   // • Bit 2 – TWEN: TWI Enable Bit
@@ -202,8 +209,14 @@ inline void i2c_reset() {
   // Release bus, and re-enable it.
   TWCR = _BV(TWEN) | _BV(TWIE) | _BV(TWEA) | _BV(TWINT);
 
-  // Ipdate twi state.
+  // Update twi state.
   twi_state = TWI_READY;
+
+
+  // Reset state.
+  Wire.flush();
+
+  interrupts();
 }
 
 inline void i2c_error() {
@@ -217,9 +230,8 @@ inline int read_int16() {
   return static_cast<int>(Wire.read()) << 8 | Wire.read();
 }
 
-inline void write_int16(const int value){
-  Wire.write(value >> 8);
-  Wire.write(value & 0xFF);
+inline size_t write_int16(const int value){
+  return Wire.write(value >> 8) + Wire.write(value & 0xFF);
 }
 
 // Repeat the macro for all 6 inputs/controls.
@@ -243,52 +255,64 @@ void i2c_request(){
 
 #define GET_INPUT_MACRO(i) \
     case PID6DriveRegister::GET_INPUT_##i: { \
-      write_int16(get_input(i)); \
+      if(write_int16(get_input(i)) != 2) i2c_error(); \
       return; \
     }
 
     EACH(GET_INPUT_MACRO)
 
+#undef GET_INPUT_MACRO
+
+
 #define GET_TARGET_MACRO(i) \
     case PID6DriveRegister::GET_TARGET_##i: { \
-      write_int16(targets[i]); \
+      if(write_int16(targets[i]) != 2) i2c_error(); \
       return; \
     }
 
     EACH(GET_TARGET_MACRO)
 
+#undef GET_TARGET_MACRO
+
+
 #define GET_ERROR_MACRO(i) \
     case PID6DriveRegister::GET_ERROR_##i: { \
-      Wire.write(get_error(i)); \
+      if(Wire.write(get_error(i)) != 1) i2c_error(); \
       return; \
     }
 
     EACH(GET_ERROR_MACRO)
 
+#undef GET_ERROR_MACRO
+
 
     case PID6DriveRegister::GET_ERROR_STATE:
-      Wire.write(error_state);
+      if(Wire.write(error_state) != 1) i2c_error();
       return;
 
     case PID6DriveRegister::GET_ALL_INPUTS:
-      for (int i = 0; i < 6; i++) write_int16(get_input(i));
+      for (int i = 0; i < 6; i++) {
+        if(write_int16(get_input(i)) != 2) { i2c_error(); return; }
+      }
       return;
 
     case PID6DriveRegister::GET_LOOP_INTERVAL:
-      write_int16((loop_interval_micros + 500) / 1000);
+      if(write_int16((loop_interval_micros + 500) / 1000) != 2) i2c_error();
       return;
 
     case PID6DriveRegister::GET_CONFIGURED:
-      Wire.write(configured);
+      if(Wire.write(configured) != 1) i2c_error();
       return;
 
     case PID6DriveRegister::GET_RESET_I2C_ERRORS:
-      Wire.write(i2c_errors);
+      if(Wire.write(i2c_errors) != 1) i2c_error();
       i2c_errors = 0;
       return;
 
     case PID6DriveRegister::GET_ALL_ERRORS:
-      for (int i = 0; i < 6; i++) Wire.write(get_error(i));
+      for (int i = 0; i < 6; i++) {
+        if(Wire.write(get_error(i)) != 1) { i2c_error(); return; }
+      }
       return;
 
     default:
@@ -303,14 +327,14 @@ void i2c_receive(int nr_of_bytes){
   i2c_time_left_to_reset_millis = i2c_no_comms_reset_millis;
 
   // Return if no data.
-  if (nr_of_bytes == 0) return;
+  if (nr_of_bytes == 0) { i2c_error(); return; }
 
-  // Assume we have some data.
+  // If we have some data.
   byte func = Wire.read();
   nr_of_bytes -= 1;
 
-  // Insta-return if no data is available (read returns -1).
-  if (func == 0xFF) return;
+  // Insta-return if no data was available (read returns -1).
+  if (func == 0xFF) { i2c_error(); return; }
 
   // Set register in case we need to respond.
   current_register = func;
@@ -320,6 +344,7 @@ void i2c_receive(int nr_of_bytes){
 
     case PID6DriveRegister::DISABLE_ALL:
       for (int i = 0; i < 6; i++) enable[i] = false;
+      // Disabling the motors is more important than making sure there was no error.
       if (nr_of_bytes != 0) i2c_error();
       return;
 
@@ -332,6 +357,8 @@ void i2c_receive(int nr_of_bytes){
 
     EACH(SET_TARGET_MACRO)
 
+#undef SET_TARGET_MACRO
+
 
 #define ENABLE_MACRO(i) \
     case PID6DriveRegister::ENABLE_##i: { \
@@ -342,6 +369,8 @@ void i2c_receive(int nr_of_bytes){
 
     EACH(ENABLE_MACRO)
 
+#undef ENABLE_MACRO
+
 
 #define INVERT_MACRO(i) \
     case PID6DriveRegister::INVERT_##i: { \
@@ -351,6 +380,8 @@ void i2c_receive(int nr_of_bytes){
     }
 
     EACH(INVERT_MACRO)
+
+#undef INVERT_MACRO
 
 
 #define OUTPUT_IDX_MACRO(i) \
@@ -363,11 +394,14 @@ void i2c_receive(int nr_of_bytes){
 
     EACH(OUTPUT_IDX_MACRO)
 
+#undef OUTPUT_IDX_MACRO
+
 
 #define SET_PID_PARAM_MACRO(i, param, attr) \
     case PID6DriveRegister::SET_PID_##param##_##i: { \
       if (nr_of_bytes != 2) { i2c_error(); return; } \
-      pids[i].attr = read_int16(); \
+      int new_pid_param = read_int16(); \
+      if (new_pid_param >= 0) pids[i].attr = new_pid_param; \
       return; \
     }
 
@@ -383,6 +417,13 @@ void i2c_receive(int nr_of_bytes){
     EACH(SET_PID_THRESHOLD_MACRO)
     EACH(SET_PID_OVERSHOOT_MACRO)
 
+#undef SET_PID_PARAM_MACRO
+#undef SET_PID_P_MACRO
+#undef SET_PID_I_TIME_MACRO
+#undef SET_PID_D_TIME_MACRO
+#undef SET_PID_THRESHOLD_MACRO
+#undef SET_PID_OVERSHOOT_MACRO
+
 
 #define INPUT_IDX_MACRO(i) \
     case PID6DriveRegister::INPUT_IDX_##i: { \
@@ -393,6 +434,8 @@ void i2c_receive(int nr_of_bytes){
     }
 
     EACH(INPUT_IDX_MACRO)
+
+#undef INPUT_IDX_MACRO
 
 
 #define DRIVE_MACRO(i) \
@@ -405,6 +448,9 @@ void i2c_receive(int nr_of_bytes){
 
     EACH(DRIVE_MACRO)
 
+#undef DRIVE_MACRO
+
+
 #define SEEKING_MACRO(i) \
     case PID6DriveRegister::SEEKING_##i: { \
       if (nr_of_bytes != 1) { i2c_error(); return; } \
@@ -414,57 +460,49 @@ void i2c_receive(int nr_of_bytes){
 
     EACH(SEEKING_MACRO)
 
+#undef SEEKING_MACRO
 
 
-    case PID6DriveRegister::SET_ALL_TARGETS:
+    case PID6DriveRegister::SET_ALL_TARGETS: {
       if (nr_of_bytes != 12) { i2c_error(); return; }
       for (int i = 0; i < 6; i++) targets[i] = read_int16();
       return;
+    }
 
-    case PID6DriveRegister::SET_CONFIGURED:
+    case PID6DriveRegister::SET_CONFIGURED: {
       if (nr_of_bytes != 1) { i2c_error(); return; }
       // Faulty reads have the value 0xFF, ignore those for the configured flag.
       configured = (Wire.read() == 1);
       return;
+    }
 
-    case PID6DriveRegister::DRIVE_ALL:
+    case PID6DriveRegister::DRIVE_ALL: {
       if (nr_of_bytes != 24) { i2c_error(); return; }
       for (int i = 0; i < 6; i++) {
         drive_power[i] = read_int16();
         drive_time[i] = read_int16();
       }
       return;
+    }
 
-    default:
+    // Don't do anything for request cases.
+    default: {
+      // Unless the request comes with unnecesariy extra data.
       if (nr_of_bytes != 0) i2c_error();
-      // Let all request cases fall through.
       return;
+    }
   }
 }
 
 #undef EACH
-#undef GET_INPUT_MACRO
-#undef SET_TARGET_MACRO
-#undef GET_TARGET_MACRO
-#undef ENABLE_MACRO
-#undef INVERT_MACRO
-#undef OUTPUT_IDX_MACRO
-#undef SET_PID_PARAM_MACRO
-#undef SET_PID_P_MACRO
-#undef SET_PID_I_TIME_MACRO
-#undef SET_PID_D_TIME_MACRO
-#undef SET_PID_THRESHOLD_MACRO
-#undef SET_PID_OVERSHOOT_MACRO
-#undef GET_ERROR_MACRO
-#undef INPUT_IDX_MACRO
-#undef DRIVE_MACRO
-#undef SEEKING_MACRO
+
 
 // Startup
 // -------
 
 void setup() {
-  Serial.begin(115200);
+  // Disable serial to allow RX and TX to be used as IO pins.
+  Serial.end();
 
   // Setup pin modes and initial values
   // ----------------------------------
@@ -473,8 +511,8 @@ void setup() {
   // Read the address (do this before setting the RCLK and LED_ERROR pins).
   pinMode(ADDRESS0, INPUT_PULLUP);
   pinMode(ADDRESS1, INPUT_PULLUP);
-  bitWrite(i2c_address, 0, !digitalRead(ADDRESS0));
-  bitWrite(i2c_address, 1, !digitalRead(ADDRESS1));
+  bitWrite(i2c_address, 0, digitalRead(ADDRESS0) == LOW);
+  bitWrite(i2c_address, 1, digitalRead(ADDRESS1) == LOW);
 
 
   // Direction pins.
@@ -542,6 +580,7 @@ void setup() {
 }
 
 void loop() {
+
   // Time keeping
   // ------------
 
@@ -549,7 +588,7 @@ void loop() {
   const long elapsed_micros = loop_start_micros - last_micros;
   last_micros = loop_start_micros;
   const int elapsed_millis = (elapsed_micros + 500) / 1000;
-  // Exponentially average the loop time with gamma = 0.5.
+  // Exponentially average the loop time with gamma = 0.8.
   loop_interval_micros = (loop_interval_micros * 80 + elapsed_micros * 20 + 50) / 100;
 
   // Inputs and control
@@ -637,8 +676,8 @@ void loop() {
   error_state = new_error_state;
 
 
-  // Reset the i2c bus if there wasn't any transmission for the reset time.
-  if (i2c_time_left_to_reset_millis < 0) {
+  // Reset the i2c bus if there wasn't any transmission for a while.
+  if (i2c_time_left_to_reset_millis <= 0) {
     i2c_reset();
     blink_remaining_millis = 20;
     blink_halfperiod_millis = 5;

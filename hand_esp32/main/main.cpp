@@ -46,6 +46,10 @@ unsigned long last_micros = 0;
 // Limit loop frequency to Hz.
 #define LOOP_FREQUENCY 200
 const int loop_delay_millis = 1000 / LOOP_FREQUENCY;
+// How long it takes between loop runs.
+unsigned long loop_interval_micros = 0;
+// How long it takes to do processing during a loop.
+unsigned long loop_active_micros = 0;
 
 
 // Power management
@@ -101,7 +105,7 @@ LCD<LCD_COLUMNS, LCD_ROWS> lcd(LCD_ADDRESS);
 
 PID6Drive pid6drive_0(PID6DRIVE_ADDRESS + 0b00);
 PID6Drive pid6drive_1(PID6DRIVE_ADDRESS + 0b01);
-PID6Drive pid6drive_2(PID6DRIVE_ADDRESS + 0b02);
+PID6Drive pid6drive_2(PID6DRIVE_ADDRESS + 0b10);
 
 
 // Global joint controls
@@ -234,45 +238,43 @@ void update_joints(const int elapsed_millis){
     // Chip indexing starts at 0.
     int index_on_chip = assigned - 1;
 
-
-    PID6Drive * pid6drive_chip = nullptr;
-
     // Invert the control if the output and position are unsynced.
     bool joint_inverted_control = (joint.inverted_output != joint.inverted_position);
 
+    // Don't need to do nothing for no chip.
+    if (joint.chip == Chip::NONE or joint.chip == Chip::_MAXVALUE) /* skip */;
 
-    switch(joint.chip) {
-      // If on the main chip, then we can immediately update values.
-      case Chip::ESPMAIN:
-        // Enable if the joint is assigned to the chip.
-        onboardpid::enable[index_on_chip] = true;
-        // Set indexes.
-        onboardpid::input_idx[index_on_chip] = joint.input_index;
-        onboardpid::output_idx[index_on_chip] = joint.output_index;
-        // Invert power only if output is inverted.
-        onboardpid::drive_power[index_on_chip] = joint.drive_power * (joint.inverted_output ? -1 : +1);
-        onboardpid::drive_time[index_on_chip] = joint.drive_time;
-        // Set seeking target.
-        onboardpid::seeking[index_on_chip] = joint.seeking;
-        onboardpid::targets[index_on_chip] = joint.target;
+    // If on the main chip, then we can immediately update values.
+    else if(joint.chip == Chip::ESPMAIN) {
+      // Enable if the joint is assigned to the chip.
+      onboardpid::enable[index_on_chip] = true;
+      // Set indexes.
+      onboardpid::input_idx[index_on_chip] = joint.input_index;
+      onboardpid::output_idx[index_on_chip] = joint.output_index;
+      // Invert power only if output is inverted.
+      onboardpid::drive_power[index_on_chip] = joint.drive_power * (joint.inverted_output ? -1 : +1);
+      onboardpid::drive_time[index_on_chip] = joint.drive_time;
+      // Set seeking target.
+      onboardpid::seeking[index_on_chip] = joint.seeking;
+      onboardpid::targets[index_on_chip] = joint.target;
 
-        onboardpid::invert[index_on_chip] = joint_inverted_control;
+      onboardpid::invert[index_on_chip] = joint_inverted_control;
 
-        // Grab the position (after we've applied the settings).
-        joint.position = onboardpid::get_input(index_on_chip);
-        break;
+      // Grab the position (after we've applied the settings).
+      joint.position = onboardpid::get_input(index_on_chip);
+    }
+    // The reamining options are the external drivers.
+    else {
+      PID6Drive * pid6drive_chip =
+        joint.chip == Chip::DRIVE_0 ? &pid6drive_0 :
+        joint.chip == Chip::DRIVE_1 ? &pid6drive_1 :
+        joint.chip == Chip::DRIVE_2 ? &pid6drive_2 :
+        nullptr; // should'nt happen.
 
+      // But guard against it happening.
+      if (pid6drive_chip) {
 
-      // The chip classes handle sending data, we just need to set the proper values.
-      case Chip::DRIVE_0:
-        pid6drive_chip = &pid6drive_0;
-        // fallthrough
-      case Chip::DRIVE_1:
-        pid6drive_chip = &pid6drive_1;
-        // fallthrough
-      case Chip::DRIVE_2:
-        pid6drive_chip = &pid6drive_2;
-        // fallthrough
+        // The chip classes handle sending data, we just need to set the proper values.
 
         // Config values.
         pid6drive_chip->config.enable[index_on_chip] = true;
@@ -288,14 +290,8 @@ void update_joints(const int elapsed_millis){
 
         // Position feedback.
         joint.position = pid6drive_chip->positions[index_on_chip];
-
-        break;
-
-      // Nothing to do for NONE and _MAXVALUE
-      default: break;
+      }
     }
-
-
   }
 
 
@@ -349,6 +345,10 @@ namespace ui {
 
   JointView joint_view = JointView::OVERVIEW;
 
+  // TODO: show power use
+  // TODO: show loop time
+  // TODO: option to save/reset joint config.
+
   void update(){
 
     // Don't update faster than the minimum.
@@ -385,6 +385,8 @@ namespace ui {
         // Cycle through chips.
         case JointView::SELECT_CHIP: {
           joint.chip = static_cast<Chip>(mod(typed(joint.chip) + increment, typed(Chip::_MAXVALUE)));
+          joint.output_index = -1;
+          joint.input_index = -1;
           break;
         }
         // Cycle through outpot indexes.
@@ -532,8 +534,7 @@ void setup(){
   // Comms
   // -----
 
-  Wire.begin();
-  Wire.setClock(400000);
+  Wire.begin(SDA_PIN, SCL_PIN, 400000);
   Serial.begin(115200);
 
   // Other
@@ -571,6 +572,7 @@ void setup(){
   pid6drive_0.configure();
   pid6drive_1.configure();
   pid6drive_2.configure();
+
 }
 
 
@@ -579,12 +581,19 @@ void setup(){
 // Main loop
 // ---------
 
+// Instead of sleeping at the end of a loop tick, spin
+// the fast loop until the next tick time.
+void fast_loop();
+
 void loop(){
   // Time keeping.
   unsigned long loop_start_micros = micros();
   const int elapsed_micros = loop_start_micros - last_micros;
   last_micros = loop_start_micros;
   const int elapsed_millis = (elapsed_micros + 500) / 1000;
+  // Exponentially average the loop time with gamma = 0.8.
+  loop_interval_micros = (loop_interval_micros * 80 + elapsed_micros * 20 + 50) / 100;
+
 
   // Power management; if power button has been held for 1 second, turn off.
   if (digitalRead(POWER_BTN) and millis() - power_last_press > 1000) {
@@ -592,22 +601,31 @@ void loop(){
   }
 
   // Restart serial communication in case something was faulty.
-  Wire.begin();
+  Wire.begin(SDA_PIN, SCL_PIN, 400000);
 
 
   // Joint control
   // -------------
 
-  update_joints(elapsed_millis);
+  // Update motor drivers configuration.
+  pid6drive_0.check_and_configure();
+  pid6drive_1.check_and_configure();
+  pid6drive_2.check_and_configure();
 
-  // Motor drivers
-  // -------------
+  // Get positions from the motor drivers.
+  pid6drive_0.read_values();
+  pid6drive_1.read_values();
+  pid6drive_2.read_values();
+
+  // Update joints state.
+  update_joints(elapsed_millis);
 
   // Update the inputs and outputs of the on-board PID.
   onboardpid::loop_tick(elapsed_millis);
-  pid6drive_0.update(elapsed_millis);
-  pid6drive_1.update(elapsed_millis);
-  pid6drive_2.update(elapsed_millis);
+  // Update targets on the motor drivers.
+  pid6drive_0.send_commands(elapsed_millis);
+  pid6drive_1.send_commands(elapsed_millis);
+  pid6drive_2.send_commands(elapsed_millis);
 
   // Experiments
   // -----------
@@ -643,17 +661,26 @@ void loop(){
 
   // TODO: remove
   // snprintf(lcd_text[0], LCD_COLUMNS+1, "V%4d I%4d E%3d", voltage_in, current_in, nr_wire_errors);
-
+  // snprintf(lcd.text[0], LCD_COLUMNS+1, "I: %4d E: %4d", pid6drive_0.loop_interval, pid6drive_0.communication_errors);
 
   lcd.update();
+
 
   // Fast loop
   // ---------
 
+  // Exponentially average the loop active time with gamma = 0.8.
+  loop_active_micros = (loop_active_micros * 80 + (micros()-loop_start_micros) * 20 + 50) / 100;
+
+  // Run fast loop at least once per slow loop.
+  fast_loop();
+
   // We want the main loop at loop frequency, but we need a faster loop
   // to handle data communication with the pressure sensors.
-  while(((micros()-loop_start_micros) / 1000) < loop_delay_millis) {
-    ads_0_reads += ads_0.update();
-    ads_1_reads += ads_1.update();
-  }
+  while(((micros()-loop_start_micros) / 1000) < loop_delay_millis) fast_loop();
+}
+
+void fast_loop(){
+  ads_0_reads += ads_0.update();
+  ads_1_reads += ads_1.update();
 }
