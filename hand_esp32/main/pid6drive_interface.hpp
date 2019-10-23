@@ -6,13 +6,8 @@
 #include "pid6drive_registers.hpp"
 #include "i2c.hpp"
 #include "pid.hpp"
+#include "utils.hpp"
 
-namespace pid6drive {
-  template <typename E>
-  constexpr E typed_add(E e, int i) noexcept {
-      return static_cast<E>(static_cast<typename std::underlying_type<E>::type>(e) + i);
-  }
-}
 
 struct PID6DriveConfig {
   bool enable[6];
@@ -91,8 +86,6 @@ public:
   // -------------
 
   void configure() {
-    using pid6drive::typed_add;
-
     // For each drive unit, if the parameter on the chip is different, then
     // send the new value.
     for (int i = 0; i < 6; i++){

@@ -1,7 +1,8 @@
 Fixme
 -----
 
-[ ] Connect the pid drive shift register to the reset line. After a reset the arduino pulls the pins high, which causes the motors to move if the shift register outputs are also high.
+[x] Connect the pid drive shift register to the reset line. After a reset the arduino pulls the pins high, which causes the motors to move if the shift register outputs are also high.
+[ ] To potentially make the reset programmable, leave SR reset alone, but add pull-down resistors to the all motor driver inputs.
 [ ] Fix the PID drive arduino programming deal. The arduino powers the motor drivers when connected to 5V internally, this causes the motors to work. Need to pull the PWM or RX/TX output
 signals low to prevent motors working during programming.
 [ ] Fix the main board encoders. They need a stronger pull up resistor (10K ohm), otherwise the esp32 keeps interrupting itself. Also a low pass filter or something.
@@ -10,17 +11,18 @@ signals low to prevent motors working during programming.
 [ ] Not a good idea to connect the main chip 5V to the driver chip 5V, not the same 5V level because of different regulators. Also since a reset of
 the main chip shuts down current for the driver chips, we might not need a reset line? TLDR: Redesign connectors to be more streamline.
 
+
 ESP
 ---
 
 [v] Select input to which joint.
 [v] Select output to which joint.
 [v] Select min and max of each joint target.
-[ ] Same as above, but for the I2C nano joints.
+[v] Same as above, but for the I2C nano joints.
+[ ] Save joint config on NVS on the ESP32.
+[ ] Measure power. And calibrate.
 [ ] Connect to wifi. If I can, go straight via the BLE api.
 [ ] Websocket with joint position, target, min, max via json.
-
-[ ] Measure power.
 [ ] Measure tip pressure via precise ADC IC.
 
 ### PCB
@@ -32,6 +34,10 @@ ESP
 Since motor capacitance will charge up on power-up.
 
 [v] P-channel mosfet power switch. Hmm.
+
+
+[ ] Re-design and order the sensors mini board.
+
 
 Nano
 ----
