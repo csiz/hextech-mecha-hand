@@ -30,6 +30,9 @@ namespace joints {
     float rate = 0.0;
 
     void update_sample_rate(const int elapsed_millis) {
+      // Skip divide by 0 cases.
+      if (elapsed_millis == 0) return;
+
       // Exponentially average the sampling rate for the ADS fingertip sensors.
       rate = 0.9 * rate + 0.1 * ((reads - last_reads) * 1000 / elapsed_millis);
       last_reads = reads;

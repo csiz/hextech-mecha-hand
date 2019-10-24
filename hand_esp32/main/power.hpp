@@ -4,10 +4,30 @@
 #include "pins.hpp"
 
 
+// Shutdown proceedure defined in main.
+void shutdown();
+
 namespace power {
 
-  int raw_voltage = 0;
-  int raw_current = 0;
+  // Current power use values.
+  float voltage = 0; // Volts
+  float current = 0; // Amps
+  float power = 0; // Watts
+  // Total energy used since startup.
+  float energy = 0; // Joules
+
+
+  // Raw values read from the analog inputs.
+  int voltage_raw = 0;
+  int current_raw = 0;
+
+  // Guess that needs calibrating; in per million increments cause we can only save ints.
+  int voltage_scale = 10000; // uVolts per 10bit inputs.
+  int current_scale = 500; //  uAmps per 10bit inputs.
+
+  // Assume initial guess is reasonable, set the increments to a smaller value.
+  int voltage_scale_inc = voltage_scale / 50;
+  int current_scale_inc = current_scale / 50;
 
 
   // Power button
@@ -19,8 +39,6 @@ namespace power {
   void IRAM_ATTR power_button_interrupt() {
     power_last_press = millis();
   }
-
-  // TODO: track total power use.
 
 
   void setup() {
@@ -38,13 +56,17 @@ namespace power {
   }
 
   void measure_and_update(const int elapsed_millis) {
-    raw_voltage = analogRead(VOLTAGE_IN);
-    raw_current = analogRead(CURRENT_IN);
-    // TODO: calibrate and scale voltage and current.
-    // TODO: use these to compute power
+    voltage_raw = analogRead(VOLTAGE_IN);
+    current_raw = analogRead(CURRENT_IN);
+
+    // Scales are in micro-units so they can be stored as ints.
+    voltage = 1e-6 * voltage_raw * voltage_scale;
+    current = 1e-6 * current_raw * current_scale;
+    power = voltage * current;
+    energy += power * elapsed_millis / 1e3;
   }
 
-  void shutdown(){
+  void turnoff(){
     digitalWrite(POWER_CTRL, LOW);
   }
 

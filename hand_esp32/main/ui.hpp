@@ -8,6 +8,8 @@
 #include "utils.hpp"
 #include "lcd.hpp"
 #include "pins.hpp"
+#include "power.hpp"
+#include "memory.hpp"
 
 
 namespace ui {
@@ -35,9 +37,156 @@ namespace ui {
   // User interface
   // --------------
 
+  // Independently keep track of the UI update rate.
+  unsigned long last_update_millis = 0;
+
+  // Main views
+  enum struct View : int {
+    POWER,
+    TIMINGS,
+    JOINTS,
+    SAVE,
+
+    _MAXVALUE
+  };
+
+  View view = View::POWER;
+
+  // The joints view cycles through all of them as a top-level view.
   int selected_joint = 0;
 
-  unsigned long last_update_millis = 0;
+  // Change the view or special case to cycle through joints.
+  void change_view(int increment) {
+    // Cycle through joints if they are in the valid zone.
+    if (view == View::JOINTS) {
+      int new_selected_joint = selected_joint + increment;
+      if (0 <= new_selected_joint and new_selected_joint < NUM_JOINTS) {
+        selected_joint = new_selected_joint;
+        // Early return after setting proper joint.
+        return;
+      }
+    }
+
+    view = typed_add_mod(view, increment, View::_MAXVALUE);
+
+    // If the new view is joints, we need to set the selected joint properly.
+    if (view == View::JOINTS) {
+      // If we increased, then we must reach joint 0.
+      if (increment > 0) selected_joint = 0;
+      // If we decreased, we must've come back to the last joint.
+      if (increment < 0) selected_joint = NUM_JOINTS - 1;
+    }
+  }
+
+
+  // Power view
+  // ----------
+
+  enum struct PowerView : int {
+    OVERVIEW,
+    EDIT_VOLTAGE,
+    EDIT_CURRENT,
+
+    _MAXVALUE
+  };
+
+  PowerView power_view = PowerView::OVERVIEW;
+
+  void update_power(int change_0, int change_1, int presses_0, int presses_1){
+    // ### Input handling
+
+    // Left button returns to overview.
+    if (presses_0) {
+      power_view = PowerView::OVERVIEW;
+    }
+
+    // Right button cycles through views.
+    if (presses_1) {
+      power_view = typed_add_mod(power_view, +1, PowerView::_MAXVALUE);
+    }
+
+    // Left wheel cycles views or values.
+    if (change_0) {
+      // The mouse wheel increments twice very quickly, just count the direction.
+      int increment = change_0 > 0 ? +1 : -1;
+
+      switch(power_view) {
+        // During overview, cycle through views.
+        case PowerView::OVERVIEW: {
+          change_view(increment);
+          break;
+        }
+        // Increment voltage scale.
+        case PowerView::EDIT_VOLTAGE: {
+          power::voltage_scale += power::voltage_scale_inc * increment;
+          break;
+        }
+        // Increment current scale.
+        case PowerView::EDIT_CURRENT: {
+          power::current_scale += power::current_scale_inc * increment;
+          break;
+        }
+        case PowerView::_MAXVALUE: break;
+      }
+    }
+
+    // Do nothing for right wheel.
+    if (change_1) {}
+
+
+    // ### Display text
+
+    snprintf(lcd.text[0], LCD_COLUMNS+1, "Energy: %7.1fJ", power::energy);
+    switch(power_view) {
+      case PowerView::OVERVIEW: {
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "%3.1fW %3.1fV %3.2fA", power::power, power::voltage, power::current);
+        break;
+      }
+      case PowerView::EDIT_VOLTAGE: {
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "%3.1fV S: %7.2g", power::voltage, 1e-6 * power::voltage_scale);
+        break;
+      }
+      case PowerView::EDIT_CURRENT: {
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "%3.2fA S: %7.2g", power::current, 1e-6 * power::current_scale);
+        break;
+      }
+      // Ignore _MAXVALUE option.
+      case PowerView::_MAXVALUE: break;
+    }
+  }
+
+  // Timings view
+  // ------------
+
+  int esp_interval_millis = -1;
+
+  void update_timings(int change_0, int change_1, int presses_0, int presses_1){
+    // ### Input handling
+
+    // Left button does nothing.
+    if (presses_0) {}
+
+    // Right button does nothing.
+    if (presses_1) {}
+
+    // Left wheel cycles views.
+    if (change_0) change_view(change_0 > 0 ? +1 : -1);
+
+    // Right wheel does nothing.
+    if (change_1) {}
+
+    // ### Display text
+
+    snprintf(lcd.text[0], LCD_COLUMNS+1, "Loop ms: E %2d", esp_interval_millis);
+    snprintf(lcd.text[1], LCD_COLUMNS+1, "D0:%2d 1:%2d 2:%2d",
+      joints::pid6drive_0.loop_interval,
+      joints::pid6drive_1.loop_interval,
+      joints::pid6drive_2.loop_interval);
+  }
+
+
+  // Joints view
+  // -----------
 
   enum struct JointView : int {
     OVERVIEW,
@@ -54,30 +203,23 @@ namespace ui {
 
   JointView joint_view = JointView::OVERVIEW;
 
-  // TODO: show power use
-  // TODO: show loop time
-  // TODO: option to save/reset joint config.
 
-  void update(){
+  void update_joints(int change_0, int change_1, int presses_0, int presses_1){
     using namespace joints;
     using joints::joints; // remove ambiguity with the namespace.
 
-    // Don't update faster than the minimum.
-    if (millis() - last_update_millis < 200) return;
-
-
-    // Input handling
-    // --------------
-
-    int change_0 = wheel_0.collect_change();
-    int change_1 = wheel_1.collect_change();
-    int presses_0 = button_0.collect_presses();
-    int presses_1 = button_1.collect_presses();
+    // ### Input handling
 
     // Left button returns to overview.
     if (presses_0) {
       joint_view = JointView::OVERVIEW;
     }
+
+    // Right button cycles through views.
+    if (presses_1) {
+      joint_view = typed_add_mod(joint_view, +1, JointView::_MAXVALUE);
+    }
+
 
     // Left wheel cycles joints or values.
     if (change_0) {
@@ -88,9 +230,9 @@ namespace ui {
       int increment = change_0 > 0 ? +1 : -1;
 
       switch(joint_view) {
-        // Cycle joints during overview.
+        // During overview, cycle through joints or views.
         case JointView::OVERVIEW: {
-          selected_joint = mod(selected_joint + increment, NUM_JOINTS);
+          change_view(increment);
           break;
         }
         // Cycle through chips.
@@ -138,11 +280,6 @@ namespace ui {
       }
     }
 
-    // Right button cycles through views.
-    if (presses_1) {
-      joint_view = static_cast<JointView>((typed(joint_view) + 1) % typed(JointView::_MAXVALUE));
-    }
-
     // Right wheels drives unit for a short amount of time.
     if (change_1) {
       int direction = change_1 > 0 ? +1 : -1;
@@ -151,8 +288,7 @@ namespace ui {
     }
 
 
-    // Display text
-    // ------------
+    // ### Display text
 
     snprintf(lcd.text[0], LCD_COLUMNS+1, "#%2d %s", selected_joint, joint_name(selected_joint));
 
@@ -201,9 +337,97 @@ namespace ui {
       // Ignore _MAXVALUE option.
       case JointView::_MAXVALUE: break;
     }
+  }
 
+
+  // Save view
+  // ---------
+
+  enum struct SaveState {
+    PROMPT,
+    CONFIRM,
+    OUT_OF_MEMORY,
+    OTHER_ERROR
+  };
+
+  SaveState save_state = SaveState::PROMPT;
+
+  void update_save(int change_0, int change_1, int presses_0, int presses_1){
+    // ### Input handling
+
+    // Left button does nothing.
+    if (presses_0) {}
+
+    // Right button saves.
+    if (presses_1) {
+      if (save_state != SaveState::CONFIRM) {
+        memory::save();
+        if (memory::err == ESP_ERR_NVS_NOT_ENOUGH_SPACE) save_state = SaveState::OUT_OF_MEMORY;
+        else if (memory::err != ESP_OK) save_state = SaveState::OTHER_ERROR;
+        else save_state = SaveState::CONFIRM;
+      }
+    }
+
+    // Left wheel cycles views; reset save state to prompt.
+    if (change_0) {
+      save_state = SaveState::PROMPT;
+      change_view(change_0 > 0 ? +1 : -1);
+    }
+
+    // Right wheel does nothing.
+    if (change_1) {}
+
+    // ### Display text
+
+    snprintf(lcd.text[0], LCD_COLUMNS+1, "Save config.");
+    switch(save_state){
+      case SaveState::PROMPT: {
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "Press to save...");
+        break;
+      }
+      case SaveState::CONFIRM: {
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "Saved!");
+        break;
+      }
+      case SaveState::OUT_OF_MEMORY: {
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "No memory!");
+        break;
+      }
+      case SaveState::OTHER_ERROR: {
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "Error: %4d", static_cast<int>(memory::err));
+        break;
+      }
+    }
+  }
+
+
+  // UI update
+  // ---------
+
+  void update(){
+
+    // Don't update faster than the minimum.
+    if (millis() - last_update_millis < 200) return;
 
     // Store the update time.
     last_update_millis = millis();
+
+
+    // Read inputs.
+    int change_0 = wheel_0.collect_change();
+    int change_1 = wheel_1.collect_change();
+    int presses_0 = button_0.collect_presses();
+    int presses_1 = button_1.collect_presses();
+
+
+    switch(view) {
+      case View::POWER: return update_power(change_0, change_1, presses_0, presses_1);
+      case View::TIMINGS: return update_timings(change_0, change_1, presses_0, presses_1);
+      case View::JOINTS: return update_joints(change_0, change_1, presses_0, presses_1);
+      case View::SAVE: return update_save(change_0, change_1, presses_0, presses_1);
+      case View::_MAXVALUE: return;
+    }
+
+    // No more code, due to return from switch.
   }
 }

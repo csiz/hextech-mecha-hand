@@ -18,6 +18,7 @@
 #include "utils.hpp"
 #include "ui.hpp"
 #include "power.hpp"
+#include "memory.hpp"
 
 // Time keeping
 // ------------
@@ -31,7 +32,6 @@ const int loop_delay_millis = 1000 / LOOP_FREQUENCY;
 unsigned long loop_interval_micros = 0;
 // How long it takes to do processing during a loop.
 unsigned long loop_active_micros = 0;
-
 
 
 
@@ -88,20 +88,20 @@ void setup(){
   joints::ads_1.begin();
 
 
-  // Initialize time keeping.
-  last_micros = micros();
+  // Initialize memory and load config.
+  memory::init();
+  memory::load();
 
 
   // External PIDs
-
-  // Wait for the arduino to start and initialize.
-  delay(500);
-
   joints::pid6drive_0.configure();
   joints::pid6drive_1.configure();
   joints::pid6drive_2.configure();
-}
 
+
+  // Initialize time keeping.
+  last_micros = micros();
+}
 
 
 // Main loop
@@ -122,6 +122,7 @@ void loop(){
   // Exponentially average the loop time with gamma = 0.8.
   loop_interval_micros = (loop_interval_micros * 80 + elapsed_micros * 20 + 50) / 100;
 
+  ui::esp_interval_millis = (loop_interval_micros + 500) / 1000;
 
   // Power management
   // ----------------
@@ -194,4 +195,13 @@ void loop(){
 void fast_loop(){
   joints::ads_0_sample_count.reads += joints::ads_0.update();
   joints::ads_1_sample_count.reads += joints::ads_1.update();
+}
+
+
+
+void shutdown(){
+  // Close config writer.
+  memory::close();
+  // Turn the power mosfet off to cut-off everything.
+  power::turnoff();
 }
