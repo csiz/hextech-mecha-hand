@@ -66,8 +66,7 @@ public:
   PID6DriveConfig config;
 
   int targets[6] = {};
-  // TODO: Start positions at -1
-  int positions[6] = {};
+  int positions[6] = {-1, -1, -1, -1, -1, -1};
   int errors[6] = {};
   int drive_power[6] = {};
   int drive_time[6] = {};

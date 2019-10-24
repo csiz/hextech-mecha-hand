@@ -19,7 +19,7 @@ ESP
 [v] Select output to which joint.
 [v] Select min and max of each joint target.
 [v] Same as above, but for the I2C nano joints.
-[ ] Save joint config on NVS on the ESP32.
+[v] Save joint config on NVS on the ESP32.
 [v] Measure power. And calibrate.
 [ ] Connect to wifi. If I can, go straight via the BLE api.
 [ ] Websocket with joint position, target, min, max via json.

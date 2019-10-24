@@ -22,8 +22,10 @@ namespace power {
   int current_raw = 0;
 
   // Guess that needs calibrating; in per million increments cause we can only save ints.
-  int voltage_scale = 10000; // uVolts per 10bit inputs.
-  int current_scale = 500; //  uAmps per 10bit inputs.
+  const int default_voltage_scale = 10000; // uVolts per 10bit inputs.
+  const int default_current_scale = 500; //  uAmps per 10bit inputs.
+  int voltage_scale = default_voltage_scale;
+  int current_scale = default_current_scale;
 
   // Assume initial guess is reasonable, set the increments to a smaller value.
   int voltage_scale_inc = voltage_scale / 50;

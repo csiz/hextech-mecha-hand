@@ -117,6 +117,8 @@ namespace joints {
 
   Joint joints[NUM_JOINTS];
 
+  const Joint default_joint;
+
   const char * joint_name(size_t index){
     switch(index){
       case 0: return "index-curl";

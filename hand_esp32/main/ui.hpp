@@ -345,7 +345,8 @@ namespace ui {
 
   enum struct SaveState {
     PROMPT,
-    CONFIRM,
+    CONFIRM_SAVE,
+    CONFIRM_RESET,
     OUT_OF_MEMORY,
     OTHER_ERROR
   };
@@ -355,16 +356,21 @@ namespace ui {
   void update_save(int change_0, int change_1, int presses_0, int presses_1){
     // ### Input handling
 
-    // Left button does nothing.
-    if (presses_0) {}
+    // Left button resets.
+    if (presses_0) {
+      if (save_state != SaveState::CONFIRM_RESET) {
+        memory::reset_defaults();
+        save_state = SaveState::CONFIRM_RESET;
+      }
+    }
 
     // Right button saves.
     if (presses_1) {
-      if (save_state != SaveState::CONFIRM) {
+      if (save_state != SaveState::CONFIRM_SAVE) {
         memory::save();
         if (memory::err == ESP_ERR_NVS_NOT_ENOUGH_SPACE) save_state = SaveState::OUT_OF_MEMORY;
         else if (memory::err != ESP_OK) save_state = SaveState::OTHER_ERROR;
-        else save_state = SaveState::CONFIRM;
+        else save_state = SaveState::CONFIRM_SAVE;
       }
     }
 
@@ -379,14 +385,18 @@ namespace ui {
 
     // ### Display text
 
-    snprintf(lcd.text[0], LCD_COLUMNS+1, "Save config.");
+    snprintf(lcd.text[0], LCD_COLUMNS+1, "Configuration:");
     switch(save_state){
       case SaveState::PROMPT: {
-        snprintf(lcd.text[1], LCD_COLUMNS+1, "Press to save...");
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "Reset   |   Save");
         break;
       }
-      case SaveState::CONFIRM: {
+      case SaveState::CONFIRM_SAVE: {
         snprintf(lcd.text[1], LCD_COLUMNS+1, "Saved!");
+        break;
+      }
+      case SaveState::CONFIRM_RESET: {
+        snprintf(lcd.text[1], LCD_COLUMNS+1, "Reset!");
         break;
       }
       case SaveState::OUT_OF_MEMORY: {
