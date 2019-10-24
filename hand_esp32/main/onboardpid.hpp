@@ -10,10 +10,11 @@
 
 namespace onboardpid {
 
-  // ADC value where it's likely a short (at 10 bit resolution).
+  // ADC value where it's likely a short (at 10 bit resolution and 11db attenuation).
+  // Note that 3.9V corresponds the max value of 1023; however the ESP can only read
+  // up to it's powering voltage which is 3.3V corresponding to 866.
   const int adc_low = 8; // ~0.06V
-  const int adc_high = 856; // ~3.23V Note that 3.3V max input corresponds to 866.
-  // TODO: ADC is connected to +5V
+  const int adc_high = 856; // ~3.23V
 
 
   // Input positions, 10bits. Note that the ESP32 max input voltage value is 866.
