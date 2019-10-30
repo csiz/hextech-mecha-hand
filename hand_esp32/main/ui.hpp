@@ -283,8 +283,8 @@ namespace ui {
     // Right wheels drives unit for a short amount of time.
     if (change_1) {
       int direction = change_1 > 0 ? +1 : -1;
-      joints[selected_joint].drive_power = 128 * direction; // half-power
-      joints[selected_joint].drive_time = 100; // milliseconds
+      joints[selected_joint].drive_power = 128 * direction; // 0 to 255
+      joints[selected_joint].drive_time = 200; // milliseconds
     }
 
 
@@ -417,7 +417,7 @@ namespace ui {
   void update(){
 
     // Don't update faster than the minimum.
-    if (millis() - last_update_millis < 200) return;
+    if (millis() - last_update_millis < 100) return;
 
     // Store the update time.
     last_update_millis = millis();
