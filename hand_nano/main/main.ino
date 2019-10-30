@@ -41,16 +41,15 @@
 #define PWM4 10
 #define PWM5 11
 
-// Direction control of outputs; DIR0-7 are attached to the shift register.
-#define DIR8 1
-#define DIR9 0
-#define DIR10 2
-#define DIR11 4
+
+// Direction control of outputs: DIR0-11 are attached to the shift register.
 
 // Shift register pins.
 #define SRCLK 13
 #define SER 12
 #define RCLK 8 // dual use with address 1
+#define SRCLR 7 // dual use with address 0
+#define SRDISABLE 2// need to pull down to turn SR on
 // We want to bit bang these so they're a bit faster; PORTB controls IO pins 8-13.
 #define SRCLK_ON PORTB |= 0b00100000
 #define SRCLK_OFF PORTB &= ~0b00100000
@@ -61,7 +60,7 @@
 
 
 // Error LED (in case a short it detected).
-#define LED_ERROR 7 // dual use with address 0.
+#define LED_ERROR 4
 
 // Timing
 #define LOOP_FREQUENCY 200
@@ -152,17 +151,13 @@ inline void exp_avg_analog_read(const uint8_t pin, const uint8_t i) {
 }
 
 
-// Send bits to the shift register, QA bit last. Start the send with zeroes to clear the register.
+// Send bits to the shift register, QA bit last.
 template<size_t N>
-void send_sr_bits(size_t zeroes, bool bits[N]) {
-  // We don't have enough pins to clear the register, so clear it with zeroes.
-  SER_SET(false);
-  _NOP(); // wait 62.5ns; 30ns minimum
-  for (size_t i = 0; i < zeroes; i++) {
-    SRCLK_ON;
-    _NOP(); // wait 62.5ns; 20ns minimum
-    SRCLK_OFF;
-  }
+void send_sr_bits(bool bits[N]) {
+  // Send a low pulse to clear the register.
+  digitalWrite(SRCLR, LOW);
+  digitalWrite(SRCLR, HIGH);
+
   // Now send data.
   for (size_t i = 0; i < N; i++) {
     // Use no-ops for timing requirements. One _NOP at 16MHz frequency is 62.5ns.
@@ -507,23 +502,12 @@ void setup() {
   // Setup pin modes and initial values
   // ----------------------------------
 
-
   // Read the address (do this before setting the RCLK and LED_ERROR pins).
   pinMode(ADDRESS0, INPUT_PULLUP);
   pinMode(ADDRESS1, INPUT_PULLUP);
   bitWrite(i2c_address, 0, digitalRead(ADDRESS0) == LOW);
   bitWrite(i2c_address, 1, digitalRead(ADDRESS1) == LOW);
 
-
-  // Direction pins.
-  pinMode(DIR8, OUTPUT);
-  digitalWrite(DIR8, LOW);
-  pinMode(DIR9, OUTPUT);
-  digitalWrite(DIR9, LOW);
-  pinMode(DIR10, OUTPUT);
-  digitalWrite(DIR10, LOW);
-  pinMode(DIR11, OUTPUT);
-  digitalWrite(DIR11, LOW);
 
   // Input pins.
   pinMode(IN0, INPUT);
@@ -558,12 +542,25 @@ void setup() {
 
 
   // Shift register pins.
+
   pinMode(SRCLK, OUTPUT);
   digitalWrite(SRCLK, LOW);
   pinMode(SER, OUTPUT);
   digitalWrite(SER, LOW);
   pinMode(RCLK, OUTPUT);
   digitalWrite(RCLK, LOW);
+  pinMode(SRCLR, OUTPUT);
+
+  // Clear the registers with a LOW pulse.
+  digitalWrite(SRCLR, LOW);
+  digitalWrite(SRCLR, HIGH);
+  // Clock the outputs to 0.
+  digitalWrite(SRCLK, HIGH);
+  digitalWrite(SRCLK, LOW);
+  // Enable the shift register outputs
+  pinMode(SRDISABLE, OUTPUT);
+  digitalWrite(SRDISABLE, LOW);
+
 
   // Error led pin.
   pinMode(LED_ERROR, OUTPUT);
@@ -647,16 +644,12 @@ void loop() {
   // Set pin outputs to computed values.
 
   // Last bit into shift register is the QA output (direction 0).
-  bool sr_bits[8] = {
+  bool sr_bits[12] = {
+    direction[11], direction[10], direction[9], direction[8],
     direction[7], direction[6], direction[5], direction[4],
     direction[3], direction[2], direction[1], direction[0]};
-  // Also send 10 zero bits to reset the shift register in case
-  // a spike or brown-out put it in a dodgy state.
-  send_sr_bits<8>(10, sr_bits);
-  digitalWrite(DIR8, direction[8]);
-  digitalWrite(DIR9, direction[9]);
-  digitalWrite(DIR10, direction[10]);
-  digitalWrite(DIR11, direction[11]);
+  send_sr_bits<12>(sr_bits);
+
 
   // Write pulse width modulation levels.
   analogWrite(PWM0, power[0]);
