@@ -1,13 +1,14 @@
 PCB Fixme
 ---------
 
-[ ] Smoothing capacitor is connected in parallel. Absolutely no use with the short circuit behaviour of the TB6612FNG...
+[v] Smoothing capacitor is connected in parallel. Absolutely no use with the short circuit behaviour of the TB6612FNG...
+  Still including it in, but smaller 4.7uF cap to smooth out 100kHz frequency. Can use both quick brake and slow brake mode with new driver chips.
 
 
 Driver Redesign
 ---------------
 
-[ ] Try to redesign the driver as a single PCB with 24 driving channels + sensors option.
+[v] Try to redesign the driver as a single PCB with 24 driving channels + sensors option.
 
 
 ESP

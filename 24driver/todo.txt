@@ -1,0 +1,120 @@
+Electronics redesign
+--------------------
+
+Can design the electronics into a single PCB with 24 motor channels by
+using 8-channel ADC and PWM drivers. I can also pick components with
+care so they can be assembled by JLCPCB. Place an OLED display directly
+on the chip reducing PCB counts to 1. Pick a high frequency LED drivers,
+close to, but under 100kHz, to eliminate audible motor noise. This also
+reduces the need for smoothing cap, need 4.7uF caps per motor (given the
+0.5ohm voltage drop on the motor driver). They are available as 1206 SMT.
+
+Features
+--------
+
+* 24 DC motor drives; PWM control @ 100kHz.
+  - With direction LEDs, and 4.7uF smoothing caps.
+* 24 Potentiometer inputs
+* 24 Motor current inputs, from 0.1ohm shunt sensors.
+* 12 Strain gauge inputs referenced at half VRef.
+* Soft power on via button.
+* Power (Voltage/Current) inputs. Hall effect sensor for current in.
+* OLED display.
+* I2C connections.
+* WiFI.
+* Xbox joystick input + 2 more buttons.
+* Inertial measurement unit cause it's good to have.
+
+
+Components Lookup
+-----------------
+
+* 5V Voltage regulator: L78M05ABDT-TR
+* 4.7uF smoothing caps: 1206B475K500NT
+* Motor drivers: DRV8870DDAR, BD6221F-E2 (no pwm freq), not RZ7889 (unknown PWM freq); not DRV8841PWPR (this requires 8.2V up)
+  + Dual H-bridges: DRV8814PWPR (ph/en), DRV8841PWPR (in/in, 45V, sense, cheap), DRV8812PWPR(ph/en, cheap, pwm-freq?), maybe L6226QTR, (phase, pwm control)
+  + Single H-bridge: RZ7889(15V), DRV8870DDAR(45V, sense), DRV8837CDSGR(11V, cheap), DRV8837DSGR (11V, cheap), BA6287F-E2 (15V, cheap, no-pwm?), BD6221F-E2 (15V)
+* I2C PWM drivers: not TLC59116IPWR (16 channels, requires LED connected to VCC)
+
+* Position and Motor current ADC: ADS1248IPWR (8 in + 2 reference, 24bits, 2xSPI 3 each), TLC2543IDWR (11 in + 2 reference, 12bits, SPI), AD7689BCPZRL7 (8 in + 2 reference, 16bits, SPI), ADC128S102CIMTX/NOPB (8 in + 2 reference, 12bits, SPI, cheap), ADS1256IDBR (8 in + 2 reference, 24bits, SPI?, expensive), ADS7830IPWR (8 channel + 1 reference, 8bit, I2C, 4 addresses, cheap)
+  + Position: ADC128S102CIMTX (cheap, required high V reference)
+  + Current: AD7689BCPZRL7 (can have low V reference)
+
+* Pressure sensors ADC: ADS1115IDGSR (4 in, internal reference, 4 addresses)
+
+* JST PH right angle socket. 5pin and 3 pin connectors.
+* JST PH male cables.
+
+* 128x32 I2C OLED Display: https://www.adafruit.com/product/4440
+* XBox joystick.
+
+
+TODO
+----
+
+[v] Check capacitance for LED driver outputs. Make sure RC low pass frequency is higher than 100kHz.
+
+
+[v] Redesign sensors PCB using SMD components (ADS1115); possibly integrate onto main PCB.
+[v] Use 4.7uF 1206 16V capacitors to low pass filter the motor output (targeting 97kHz PWM).
+[v] Maybe use 3 x TLC59108 8bit led driver to pwm signal the motor drivers at 97khz. I2C address is 100AAAA.
+[v] Maybe use 3 x ADS7828 8-channel ADC converter to read inputs from potentiometers. I2C address is 10010AA.
+  Using ADC128S102CIMTX for the positions ADC.
+[v] Maybe use another 3 x ADS7828 converters + 24 ACS723 hall effect sensors to read current going into motors. Or just 0.1 ohm shunt resistors, with a low 0.4V voltage reference for the ADS.
+  Ended up with AD7689BCPZRL7, 1V reference and 0.1 ohm resistor for the current sensors.
+[v] Use OLED display mounted right on top of the PCB, like https://www.adafruit.com/product/931.
+  Using a more generic and smaller OLED.
+[v] Xbox joystick input instead of encoders!
+[v] 5pin JST PH connectors!
+[v] 3pin JST PH connectors for strain gauges.
+[x] If enough pins left, maybe have a balance monitor 5pin JST XH connector.
+  Only 1 pin left for user to do whatever.
+
+
+
+
+
+Checklist and Description
+-------------------------
+
+* Control 24 DC motors (max 15V 2A each, 6A total) with PWM signals at 97kHz; measure current for each.
+* Read 24 potentiometers for position encoding.
+* Read 12 strain gauges.
+
+[ ] 1.5kHz low pass filter on joystick and button inputs.
+[ ] Power button turns on V; power control pin then controls power up state.
+[ ] Is bulk capacitance of 8800mF enough?
+### Motors
+[ ] Control motors with [DRV8870DDAR](DRV8870DDAR); max 3.6A; 6.5V - 45V; Rds 565mΩ; PWM up to 200kHz.
+[ ] Current sensor resistor of 0.1Ω.
+[ ] VREF set at 2.5V; combined with resistor limits current to 2.5A per motor.
+[ ] Motor smoothing capacitor of 4.7uF (max 50V); resonance frequency with motor driver resistance at 60kHz (less than 97kHz driving frequency).
+[ ] LED as direction & power indicator for each motor. 1kΩ current limiting resistor.
+### Motor PWM
+[ ] Use [TLC59116IPWR](TLC59116IPWR) 16-channel, 8-bit 97kHz PWM, I2C interface, LED current sink as the PWM motor inputs.
+[ ] Because it's a current sink, use 10kΩ pull-up resistors (motor inputs have 100kΩ pull-down).
+[ ] 10kΩ resistors and less than 50pF parasitic capacitance have low pass frequency higher than 320kHz (higher than 97kHz driving frequency).
+[ ] REXT of 1kΩ sets output current at 20mA; enough to sink the 0.5mA current from 10kΩ pull-up to 5V.
+### Current
+[ ] Measure current with [AD7689BCPZRL7](AD7689BCPZRL7); SPI interface; 16bit ADC.
+[ ] Use reference of 1V; can measure up to 10A with 0.1Ω shunt resistor.
+[ ] 16kHz low pass filter per input.
+### Position
+[ ] Measure potentiometer voltage with [ADC128S102CIMTX](ADC128S102CIMTX/NOPB) 8-channel, 12bit ADC.
+[ ] 16kHz low pass filter per input.
+[ ] Is this really 16kHz if the potentiometers are 50kΩ (with the 100nF capacitor)?
+### Strain gauges
+To measure strain, create a Wheatstone bridge using 2 strain gauges on the part; either opposite
+sides of the flexible part or 1 on a flexible region and 1 on nearby stiff region (close enough
+so they have the same temperature). Use the strain gauges as voltage divider and measure against
+a reference 0.5V voltage divider with a differential ADC.
+[ ] We can measure 3 differential inputs with [ADS1115IDGSR](ADS1115IDGSR); 16bit ADC; I2C interface.
+[ ] 1.6kHz low pass filter per input.
+[ ] 3V3/2 voltage reference from two 2kΩ with 1uF smoothing capacitor.
+
+
+[DRV8870DDAR]: https://www.ti.com/lit/ds/symlink/drv8870.pdf
+[AD7689BCPZRL7]: https://www.analog.com/media/en/technical-documentation/data-sheets/AD7682_7689.pdf
+[TLC59116IPWR]: https://www.ti.com/lit/ds/symlink/tlc59116.pdf
+[ADC128S102CIMTX]: https://www.ti.com/lit/ds/symlink/adc128s102.pdf
+[ADS1115IDGSR]: https://www.ti.com/lit/ds/symlink/ads1114.pdf
