@@ -25,6 +25,7 @@ struct Encoder {
 
   int n_interrupts = 0;
   int last_position = 0;
+  int min_delay = 10;
 
   // Set the encoder to be an active LOW or active HIGH state.
   const bool active_state;
@@ -56,13 +57,13 @@ struct Encoder {
 };
 
 void IRAM_ATTR encoder_interrupt(void * arg) {
-  auto & encoder = *static_cast<Encoder*>(arg);
+  Encoder & encoder = *static_cast<Encoder*>(arg);
 
   // Debounce interrupts if within a very short time.
   const unsigned long diff = micros() - encoder.last_interrupt_micros;
   // Note that when micros <  last_interrupt_micros because of the
   // time overflow, then diff should also underflow into a high value.
-  if (diff < 100) return;
+  if (diff < encoder.min_delay) return;
 
   // Flip the states if we use pull-up as it's active LOW.
   const bool active_state = encoder.active_state;

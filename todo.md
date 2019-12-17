@@ -1,27 +1,13 @@
 PCB Fixme
 ---------
 
-[v] Connect the pid drive shift register to the reset line. After a reset the arduino pulls the pins high, which causes the motors to move if the shift register outputs are also high.
-[x] To potentially make the reset programmable, leave SR reset alone, but add pull-down resistors to the all motor driver inputs.
-    Inbuilt pull down resistors, now all inputs are connected to shift registers which are explicitly 0ed at power up.
-[v] Fix the PID drive arduino programming deal. The arduino powers the motor drivers when connected to 5V internally, this causes the motors to work. Need to pull the PWM or RX/TX output
-signals low to prevent motors working during programming.
-    Done, arduino no longer turns motors at startup, and RX/TX lines are free.
-[v] Fix the main board encoders. They need a stronger pull up resistor (10K ohm), otherwise the esp32 keeps interrupting itself. Also a low pass filter or something.
-    Pull-ups and low passes for all inputs.
-[v] Change voltage to 7V4, cause I misremembered.
-    Changed on driver board. Changed on main board.
-[v] ! Fix the address pins on the nano. Dual use doesn't work if there's a LED on the same pin. Also avoid pin 13 as it has the internal LED. Increasing the LED resistance to 10K ohm works, but it's a bit dodgy.
-    Fixed, LED moves to it's own pin.
-[v] Not a good idea to connect the main chip 5V to the driver chip 5V, not the same 5V level because of different regulators. Also since a reset of
-the main chip shuts down current for the driver chips, we might not need a reset line? TLDR: Redesign connectors to be more streamline.
-    Connectors for the PID6 drive are now SCL SDA RST VCC GND, which is all lines needed as inputs.
-[v] Change to 3V3 voltage for the inputs to the esp board. ESP can't read higher than it's working voltage.
-[v] Enlarge the support holes for the encoders.
-[v] Test soldering address pads.
-    Tested, it's pretty difficult. Enhanced the solder mask to allow a bridge between the pads.
-[v] Double check current sensor pins are properly upside down.
+[ ] Smoothing capacitor is connected in parallel. Absolutely no use with the short circuit behaviour of the TB6612FNG...
 
+
+Driver Redesign
+---------------
+
+[ ] Try to redesign the driver as a single PCB with 24 driving channels + sensors option.
 
 
 ESP
@@ -97,4 +83,32 @@ Project
 [ ] Write bill of materials.
 [ ] Document assembly.
 [ ] Publish first working version.
+
+
+
+Fixed
+-----
+
+
+[v] Connect the pid drive shift register to the reset line. After a reset the arduino pulls the pins high, which causes the motors to move if the shift register outputs are also high.
+[x] To potentially make the reset programmable, leave SR reset alone, but add pull-down resistors to the all motor driver inputs.
+    Inbuilt pull down resistors, now all inputs are connected to shift registers which are explicitly 0ed at power up.
+[v] Fix the PID drive arduino programming deal. The arduino powers the motor drivers when connected to 5V internally, this causes the motors to work. Need to pull the PWM or RX/TX output
+signals low to prevent motors working during programming.
+    Done, arduino no longer turns motors at startup, and RX/TX lines are free.
+[v] Fix the main board encoders. They need a stronger pull up resistor (10K ohm), otherwise the esp32 keeps interrupting itself. Also a low pass filter or something.
+    Pull-ups and low passes for all inputs.
+[v] Change voltage to 7V4, cause I misremembered.
+    Changed on driver board. Changed on main board.
+[v] ! Fix the address pins on the nano. Dual use doesn't work if there's a LED on the same pin. Also avoid pin 13 as it has the internal LED. Increasing the LED resistance to 10K ohm works, but it's a bit dodgy.
+    Fixed, LED moves to it's own pin.
+[v] Not a good idea to connect the main chip 5V to the driver chip 5V, not the same 5V level because of different regulators. Also since a reset of
+the main chip shuts down current for the driver chips, we might not need a reset line? TLDR: Redesign connectors to be more streamline.
+    Connectors for the PID6 drive are now SCL SDA RST VCC GND, which is all lines needed as inputs.
+[v] Change to 3V3 voltage for the inputs to the esp board. ESP can't read higher than it's working voltage.
+[v] Enlarge the support holes for the encoders.
+[v] Test soldering address pads.
+    Tested, it's pretty difficult. Enhanced the solder mask to allow a bridge between the pads.
+[v] Double check current sensor pins are properly upside down.
+
 

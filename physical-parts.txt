@@ -41,6 +41,7 @@ Parts
 * 1 - 2N7000 N channel mosfet
 * 1 - FQP27P06 P channel mosfet
 * 1 - 3.3V-5V 4 Channels Logic Level Converter
+* 15 - RDC503051A rotary position sensor (potentiometer with shaft hole)
 
 
 Not needed anymore

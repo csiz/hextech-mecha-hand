@@ -7,15 +7,16 @@ void IRAM_ATTR button_interrupt(void * arg);
 struct Button {
   const gpio_num_t pin;
   volatile uint8_t presses = 0;
-  unsigned long last_press = 0;
-  int min_delay = 100;
+  volatile bool pressed = false;
+  unsigned long last_change = 0;
+  int min_delay = 10;
   const bool active_state;
 
   Button(gpio_num_t pin, bool active_state = HIGH) : pin(pin), active_state(active_state) {}
 
   void begin(){
     pinMode(pin, active_state == HIGH ? INPUT_PULLDOWN : INPUT_PULLUP);
-    attachInterruptArg(pin, button_interrupt, this, active_state == HIGH ? RISING : FALLING);
+    attachInterruptArg(pin, button_interrupt, this, CHANGE);
   }
 
   void end(){
@@ -33,11 +34,15 @@ struct Button {
 
 // Button debounce handling.
 void IRAM_ATTR button_interrupt(void * arg) {
-  Button* button = static_cast<Button*>(arg);
+  Button & button = *static_cast<Button*>(arg);
 
   auto now = millis();
-  if (now - button->last_press > button->min_delay) {
-    button->presses += 1;
-    button->last_press = now;
+  if (now - button.last_change > button.min_delay) {
+
+    button.pressed = digitalRead(button.pin) == button.active_state;
+
+    if(button.pressed) button.presses += 1;
+
+    button.last_change = now;
   }
 }
