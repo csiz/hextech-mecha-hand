@@ -16,3 +16,5 @@ Requires:
   * ESP-IDF v3.2.2 https://github.com/espressif/esp-idf/releases/tag/v3.2.2
   * Arduino ESP32 v1.0.2 https://github.com/espressif/arduino-esp32/releases/tag/1.0.2
   * LiquidCrystal_I2C https://github.com/fdebrabander/Arduino-LiquidCrystal-I2C-library
+  * Adafruit SSD1306 https://github.com/adafruit/Adafruit_SSD1306
+  * Adafruit GFX https://github.com/adafruit/Adafruit-GFX-Library

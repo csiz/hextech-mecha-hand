@@ -81,36 +81,36 @@ Checklist and Description
 * Read 24 potentiometers for position encoding.
 * Read 12 strain gauges.
 
-[ ] 1.5kHz low pass filter on joystick and button inputs.
-[ ] Power button turns on V; power control pin then controls power up state.
-[ ] Is bulk capacitance of 8800mF enough?
+[v] 1.5kHz low pass filter on joystick and button inputs.
+[v] Power button turns on V; power control pin then controls power up state.
+[v] Is bulk capacitance of 8800mF enough?
 ### Motors
-[ ] Control motors with [DRV8870DDAR](DRV8870DDAR); max 3.6A; 6.5V - 45V; Rds 565mΩ; PWM up to 200kHz.
-[ ] Current sensor resistor of 0.1Ω.
-[ ] VREF set at 2.5V; combined with resistor limits current to 2.5A per motor.
-[ ] Motor smoothing capacitor of 4.7uF (max 50V); resonance frequency with motor driver resistance at 60kHz (less than 97kHz driving frequency).
+[v] Control motors with [DRV8870DDAR](DRV8870DDAR); max 3.6A; 6.5V - 45V; Rds 565mΩ; PWM up to 200kHz.
+[v] Current sensor resistor of 0.1Ω.
+[v] VREF set at 2.5V; combined with resistor limits current to 2.5A per motor.
+[v] Motor smoothing capacitor of 4.7uF (max 50V); resonance frequency with motor driver resistance at 60kHz (less than 97kHz driving frequency).
 [ ] LED as direction & power indicator for each motor. 1kΩ current limiting resistor.
 ### Motor PWM
-[ ] Use [TLC59116IPWR](TLC59116IPWR) 16-channel, 8-bit 97kHz PWM, I2C interface, LED current sink as the PWM motor inputs.
-[ ] Because it's a current sink, use 10kΩ pull-up resistors (motor inputs have 100kΩ pull-down).
-[ ] 10kΩ resistors and less than 50pF parasitic capacitance have low pass frequency higher than 320kHz (higher than 97kHz driving frequency).
-[ ] REXT of 1kΩ sets output current at 20mA; enough to sink the 0.5mA current from 10kΩ pull-up to 5V.
+[v] Use [TLC59116IPWR](TLC59116IPWR) 16-channel, 8-bit 97kHz PWM, I2C interface, LED current sink as the PWM motor inputs.
+[v] Because it's a current sink, use 10kΩ pull-up resistors (motor inputs have 100kΩ pull-down).
+[v] 10kΩ resistors and less than 50pF parasitic capacitance have low pass frequency higher than 320kHz (higher than 97kHz driving frequency).
+[v] REXT of 1kΩ sets output current at 20mA; enough to sink the 0.5mA current from 10kΩ pull-up to 5V.
 ### Current
-[ ] Measure current with [AD7689BCPZRL7](AD7689BCPZRL7); SPI interface; 16bit ADC.
-[ ] Use reference of 1V; can measure up to 10A with 0.1Ω shunt resistor.
-[ ] 16kHz low pass filter per input.
+[v] Measure current with [AD7689BCPZRL7](AD7689BCPZRL7); SPI interface; 16bit ADC.
+[v] Use reference of 1V; can measure up to 10A with 0.1Ω shunt resistor.
+[v] 16kHz low pass filter per input.
 ### Position
-[ ] Measure potentiometer voltage with [ADC128S102CIMTX](ADC128S102CIMTX/NOPB) 8-channel, 12bit ADC.
-[ ] 16kHz low pass filter per input.
-[ ] Is this really 16kHz if the potentiometers are 50kΩ (with the 100nF capacitor)?
+[v] Measure potentiometer voltage with [ADC128S102CIMTX](ADC128S102CIMTX/NOPB) 8-channel, 12bit ADC.
+[v] 16kHz low pass filter per input.
+[v] Is this really 16kHz if the potentiometers are 50kΩ (with the 100nF capacitor)?
 ### Strain gauges
 To measure strain, create a Wheatstone bridge using 2 strain gauges on the part; either opposite
 sides of the flexible part or 1 on a flexible region and 1 on nearby stiff region (close enough
 so they have the same temperature). Use the strain gauges as voltage divider and measure against
 a reference 0.5V voltage divider with a differential ADC.
-[ ] We can measure 3 differential inputs with [ADS1115IDGSR](ADS1115IDGSR); 16bit ADC; I2C interface.
-[ ] 1.6kHz low pass filter per input.
-[ ] 3V3/2 voltage reference from two 2kΩ with 1uF smoothing capacitor.
+[v] We can measure 3 differential inputs with [ADS1115IDGSR](ADS1115IDGSR); 16bit ADC; I2C interface.
+[v] 1.6kHz low pass filter per input.
+[v] 3V3/2 voltage reference from two 2kΩ with 1uF smoothing capacitor.
 
 
 [DRV8870DDAR]: https://www.ti.com/lit/ds/symlink/drv8870.pdf
