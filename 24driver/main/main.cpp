@@ -37,27 +37,42 @@ Code Outline
 #include "ui.hpp"
 #include "drivers.hpp"
 #include "power.hpp"
+#include "spi.hpp"
+#include "currents.hpp"
+#include "positions.hpp"
 
 void setup(){
   power::setup();
   i2c::setup();
   ui::setup();
   drivers::setup();
-
-  // ui::display.clearDisplay();
-  // ui::display.setTextSize(1);
-  // ui::display.setTextColor(SSD1306_WHITE);
-  // ui::display.setCursor(0, 0);
-  // ui::display.display();
+  spi::setup();
+  currents::setup();
+  positions::setup();
 }
 
 void loop(){
+  // TODO: remove
   drivers::power[0] = 1.0;
   drivers::power[1] = -1.0;
   drivers::power[2] = 0.5;
   drivers::power[3] = -0.5;
 
   drivers::update();
+  currents::update();
+
+  // TODO: remove
+  ui::display.clearDisplay();
+  ui::display.setTextSize(1);
+  ui::display.setTextColor(SSD1306_WHITE);
+  ui::display.setCursor(0, 0);
+  ui::display.println(currents::current[0], 5);
+  ui::display.println(currents::current[1], 5);
+  ui::display.println(currents::current[2], 5);
+  ui::display.println(currents::current[3], 5);
+  ui::display.display();
+
+  delay(500);
 
   power::shutdown_on_long_press();
 }
