@@ -8,6 +8,12 @@
 
 namespace currents {
 
+  // Raw ADC values from the AD7689 (16bit).
+  uint16_t raw[24] = {0};
+  // Per channel current values in ampere; assuming accurate sense resistors.
+  float current[24] = {0.0};
+
+
   // Look-up for each converter's CNV pin.
   const gpio_num_t ADC_CNV_PINS[3] = {CURR0_CNV, CURR1_CNV, CURR2_CNV};
 
@@ -15,16 +21,11 @@ namespace currents {
   // This reference is set via a 8.2k/2.0k @ 5V voltage divider.
   const float VREF = 0.98;
   // Voltage value that the least significant bit represents. The AD7689 chip is 16 bit.
-  const float VLSB = VREF / 65536;
+  const float VLSB = VREF / 0xFFFF;
   // Current sense resistance for each motor driver; in ohms.
   const float SENSE_RESITANCE = 0.1;
   // Current increment per result bit; in ampere.
   const float ILSB = VLSB / SENSE_RESITANCE;
-
-  // Raw ADC values from the AD7689.
-  uint16_t raw[24] = {0};
-  // Per channel current values in ampere; assuming accurate sense resistors.
-  float current[24] = {0.0};
 
 
   // * CFG[13] overwrite register.

@@ -40,6 +40,7 @@ Code Outline
 #include "spi.hpp"
 #include "currents.hpp"
 #include "positions.hpp"
+#include "strains.hpp"
 
 void setup(){
   power::setup();
@@ -52,27 +53,24 @@ void setup(){
 }
 
 void loop(){
-  // TODO: remove
-  drivers::power[0] = 1.0;
-  drivers::power[1] = -1.0;
-  drivers::power[2] = 0.5;
-  drivers::power[3] = -0.5;
-
   drivers::update();
   currents::update();
+  positions::update();
+  strains::update();
+
 
   // TODO: remove
-  ui::display.clearDisplay();
-  ui::display.setTextSize(1);
-  ui::display.setTextColor(SSD1306_WHITE);
-  ui::display.setCursor(0, 0);
-  ui::display.println(currents::current[0], 5);
-  ui::display.println(currents::current[1], 5);
-  ui::display.println(currents::current[2], 5);
-  ui::display.println(currents::current[3], 5);
-  ui::display.display();
+  if (millis() - ui::last_screen_update > 500) {
+    ui::display.clearDisplay();
+    ui::display.setTextSize(1);
+    ui::display.setTextColor(SSD1306_WHITE);
+    ui::display.setCursor(0, 0);
+    ui::display.println(1000.0 * strains::samples[0] / millis(), 5);
+    ui::display.display();
 
-  delay(500);
+    ui::last_screen_update = millis();
+  }
+
 
   power::shutdown_on_long_press();
 }

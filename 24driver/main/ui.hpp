@@ -18,6 +18,8 @@ namespace ui {
   // Reset pin # (or -1 if sharing Arduino reset pin)
   Adafruit_SSD1306 display(screen_width, screen_height, &Wire, -1);
 
+  unsigned long last_screen_update;
+
 
   void setup(){
     // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
@@ -26,6 +28,9 @@ namespace ui {
     display.clearDisplay();
     // Show blank screen.
     display.display();
+
+    // Initialize last screen update timing.
+    last_screen_update = millis();
   }
 
   void update(){
