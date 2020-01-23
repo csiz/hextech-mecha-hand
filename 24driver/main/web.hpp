@@ -180,6 +180,58 @@ namespace web {
     }
   }
 
+  // Scan networks if request by a client.
+  void send_network_scan(){
+    // Invalid queue, nothing to do.
+    if (not clients_waiting_networks) return;
+
+    // Scan for nearby networks only if any client wants to know.
+    if (not uxQueueMessagesWaiting(clients_waiting_networks)) return;
+
+
+    // Scanning takes a while, and the first round will definitely not be complete.
+    // Check number of wifi stations in range, or get scan status.
+    auto n = WiFi.scanComplete();
+
+    // Check if a scan was started or failed (failed is also the flag for no scan started).
+    if (n == WIFI_SCAN_RUNNING) return;
+    if (n == WIFI_SCAN_FAILED) {
+      WiFi.scanNetworks(/* async = */ true);
+      return;
+    }
+    // Scan is complete and we see `n` networks.
+
+    // Networks message.
+    String networks;
+
+    // Networks response code.
+    networks += static_cast<char>(AVAILABLE_NETOWRKS);
+
+    // Truncate n to 1 byte, and specify how many networks we'll list.
+    if (n > 0xFF) n = 0xFF;
+    networks += static_cast<char>(n);
+
+    // For each network, send over SSID length, SSID, and RSSI (signal strength).
+    for (size_t i = 0; i < n; i++){
+      auto const& ssid = WiFi.SSID(i);
+      networks += static_cast<char>(ssid.length());
+      networks += ssid;
+      // The arduino wifi lib returns an int32, but the underlying ESP32 lib uses
+      // int8. So first cast into int8 to keep the sign, then cast to char to append.
+      networks += static_cast<char>(static_cast<int8_t>(WiFi.RSSI(i)));
+    }
+
+    // Send the network information to all waiting clients.
+    ws_client_id id = 0;
+    while(xQueueReceive(clients_waiting_networks, &id, 0)) {
+      ws.binary(id, networks.c_str(), networks.length());
+    }
+
+    // Remove scan information now that we sent it over.
+    WiFi.scanDelete();
+  }
+
+
   // We want to run the wifi management loop in core 0.
   void update_loop(void * arg);
 
@@ -250,8 +302,7 @@ namespace web {
     ok = true;
   }
 
-  void update(){
-    // TODO: Limit to 1 call per second ish.
+  void update() {
     delay(1000);
 
     // > Browsers sometimes do not correctly close the websocket connection, even
@@ -276,52 +327,8 @@ namespace web {
     }
 
 
-    // Network scanning.
-    if (clients_waiting_networks) {
-      // Scan for nearby networks if any client wants to know.
-      if (uxQueueMessagesWaiting(clients_waiting_networks)) {
-        // Scanning takes a while, and the first round will definitely not be complete.
-        // Check number of wifi stations in range, or get scan status.
-        auto n = WiFi.scanComplete();
-
-        // Check if a scan was started or failed (failed is also the flag for no scan started).
-        if (n == WIFI_SCAN_RUNNING) /* skip */;
-        else if (n == WIFI_SCAN_FAILED) WiFi.scanNetworks(/* async = */ true);
-        // Scan is complete and we see `n` networks.
-        else {
-          // Networks message.
-          String networks;
-
-          // Networks response code.
-          networks += static_cast<char>(AVAILABLE_NETOWRKS);
-
-          // Truncate n to 1 byte, and specify how many networks we'll list.
-          if (n > 0xFF) n = 0xFF;
-          networks += static_cast<char>(n);
-
-          // For each network, send over SSID length, SSID, and RSSI (signal strength).
-          for (size_t i = 0; i < n; i++){
-            auto const& ssid = WiFi.SSID(i);
-            networks += static_cast<char>(ssid.length());
-            networks += ssid;
-            // The arduino wifi lib returns an int32, but the underlying ESP32 lib uses
-            // int8. So first cast into int8 to keep the sign, then cast to char to append.
-            networks += static_cast<char>(static_cast<int8_t>(WiFi.RSSI(i)));
-          }
-
-          // Send the network information to all waiting clients.
-          ws_client_id id = 0;
-          while(xQueueReceive(clients_waiting_networks, &id, 0)) {
-            ws.binary(id, networks.c_str(), networks.length());
-          }
-
-          // Remove scan information now that we sent it over.
-          WiFi.scanDelete();
-        }
-
-      }
-    }
-
+    // Send available networks if any clients requrested them.
+    send_network_scan();
   }
 
   void update_loop(void * arg){

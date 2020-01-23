@@ -63,7 +63,7 @@ void setup(){
   positions::setup();
   strains::setup();
 
-  // Start webserver and it's loop (they're configured to run in core 0).
+  // Start webserver and its loop (they're configured to run in core 0).
   web::setup();
 }
 
