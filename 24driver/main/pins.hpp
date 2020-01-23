@@ -16,6 +16,8 @@
 #define J0 GPIO_NUM_34
 #define J1 GPIO_NUM_32
 
+#define LED0 GPIO_NUM_14
+
 // External
 #define P0 GPIO_NUM_0
 #define SDA2 GPIO_NUM_17

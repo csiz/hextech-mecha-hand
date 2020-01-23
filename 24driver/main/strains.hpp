@@ -129,4 +129,9 @@ namespace strains {
     }
   }
 
+  // These don't really need a setup, just run update once.
+  void setup(){
+    update();
+  }
+
 }
