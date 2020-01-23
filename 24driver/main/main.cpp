@@ -50,7 +50,7 @@ void setup(){
 
   // Load memory configuration.
   memory::setup();
-  // memory::load();
+  memory::load();
 
   // Initialize inter-chip comms before the chips themselves.
   i2c::setup();
@@ -94,10 +94,10 @@ void loop(){
     // ui::display.println(power::voltage, 5);
     // ui::display.println(power::current * 1000, 5);
     // ui::display.println(power::raw_current_voltage, 5);
-    ui::display.println(web::connect_to_router ? "Connecting to" : "Access Point");
-    ui::display.println(web::connect_to_router ? web::router_ssid : web::ap_ssid);
+    ui::display.println(web::connected_to_router ? "Connected to" : "Access Point");
+    ui::display.println(web::connected_to_router ? web::router_ssid : web::ap_ssid);
     ui::display.println(web::ip);
-    ui::display.println(WiFi.status());
+    ui::display.println(web::ok);
     ui::display.display();
 
     ui::last_screen_update = millis();

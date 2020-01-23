@@ -10,6 +10,19 @@
 #include <string.h>
 
 namespace web {
+  // WiFi Bug
+  // --------
+  //
+  // Can't switch from AP mode to STA. The docs says we should turn wifi off,
+  // but when trying to do that we get an error about `wifi not start`...
+  //
+  // There's some WiFi bugs in esp-idf-v3.2 that seem to be fixed in v3.3 and
+  // v4. Unfortunately the esp32-arduino library support up to v3.2 for now...
+  // As a work around, instead of switching connection on the fly, we'll save
+  // the new settings and restart the chip... Seems that connecting on startup
+  // works better than switching.
+  //
+  // For now use a `needs_restart` flag to switch.
 
   enum APICodes : uint8_t {
 
@@ -29,15 +42,18 @@ namespace web {
   // SSID and password when connecting to an existing network.
   char router_ssid[MAX_LENGTH] = "";
   char router_password[MAX_LENGTH] = "";
-  // Wwhether to connect to a router or start an AP; always fallback on AP.
+  // Whether to connect to a router or start an AP; always fallback on AP.
   bool connect_to_router = false;
+  // Whether we actually conencted to router or AP.
+  bool connected_to_router = false;
   // Whether new connection needs to be established, and new settings saved.
   bool new_settings = false;
-  // Whether we configured new network and awaiting connection.
-  bool connecting = true;
   // Whether we need to save settings. Do this by setting a flag so we don't
   // depend on memory from this file. Only memory depends on web.
   bool save_settings = false;
+
+  // Workaround to switching from AP to STA mode. We'll do it by restarting the chip.
+  bool needs_restart = false;
 
   // Server port to use, 80 for HTTP/WS or 443 for HTTPS/WSS.
   const int PORT = 80;
@@ -139,47 +155,28 @@ namespace web {
 
 
   void connect_wifi(){
-    // Stop any existing connection.
-    WiFi.softAPdisconnect(true);
-    WiFi.disconnect(true);
-    delay(1000);
-
-
-    connecting = true;
 
     // Connect to an existing wifi network.
     if (connect_to_router) {
-      WiFi.enableSTA(true);
-      delay(100);
+      connected_to_router = true;
 
       WiFi.begin(router_ssid, router_password);
       const auto status = WiFi.waitForConnectResult();
       if (status == WL_CONNECTED) {
         ip = WiFi.localIP();
-        connecting = false;
         ok = true;
-        if (new_settings) {
-          save_settings = true;
-          new_settings = false;
-        }
+        return;
       }
+    }
 
     // Start as wifi access point if we can't connect to known network.
-    } else {
-      WiFi.enableAP(true);
-      delay(100);
+    connected_to_router = false;
+    if(WiFi.softAP(ap_ssid, ap_password)) {
+      ip = WiFi.softAPIP();
+      ok = true;
 
-      if(WiFi.softAP(ap_ssid, ap_password)) {
-        ip = WiFi.softAPIP();
-        connecting = false;
-        ok = true;
-        if (new_settings) {
-          save_settings = true;
-          new_settings = false;
-        }
-      } else {
-        // TODO: report we can't start an access point.
-      }
+    } else {
+      // TODO: report we can't start an access point.
     }
   }
 
@@ -269,21 +266,13 @@ namespace web {
 
     // Reconnect if needed.
     if (new_settings) {
-      connect_wifi();
+      new_settings = false;
+      save_settings = true;
+      needs_restart = true;
     }
 
-    if (connecting) {
-      const auto status = WiFi.status();
-      if (status == WL_CONNECTED) {
-        connecting = false;
-        ok = true;
-        ip = WiFi.localIP();
-        // Set flag to save settings on next memory update.
-        if (new_settings) {
-          save_settings = true;
-          new_settings = false;
-        }
-      }
+    if (needs_restart and not save_settings) {
+      ESP.restart();
     }
 
 
