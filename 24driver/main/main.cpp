@@ -41,23 +41,49 @@ Code Outline
 #include "currents.hpp"
 #include "positions.hpp"
 #include "strains.hpp"
+#include "web.hpp"
+#include "memory.hpp"
 
 void setup(){
+  // Keep the board turned on before anything else.
   power::setup();
+
+  // Load memory configuration.
+  memory::setup();
+  // memory::load();
+
+  // Initialize inter-chip comms before the chips themselves.
   i2c::setup();
+  spi::setup();
+
+  // Initialize component chips.
   ui::setup();
   drivers::setup();
-  spi::setup();
   currents::setup();
   positions::setup();
+  strains::setup();
+
+  // Start webserver and it's loop (they're configured to run in core 0).
+  web::setup();
 }
 
 void loop(){
-  drivers::update();
+  // Update power measurements, and check if we need to turn-off.
+  power::update();
+
+  // Get updates from input chips.
   currents::update();
   positions::update();
   strains::update();
 
+  // Send updates to driver chips.
+  drivers::update();
+
+  // Save new configs if needed.
+  if (web::save_settings) {
+    memory::save_wifi();
+    web::save_settings = false;
+  }
 
   // TODO: remove
   if (millis() - ui::last_screen_update > 500) {
@@ -65,12 +91,17 @@ void loop(){
     ui::display.setTextSize(1);
     ui::display.setTextColor(SSD1306_WHITE);
     ui::display.setCursor(0, 0);
-    ui::display.println(1000.0 * strains::samples[0] / millis(), 5);
+    // ui::display.println(power::voltage, 5);
+    // ui::display.println(power::current * 1000, 5);
+    // ui::display.println(power::raw_current_voltage, 5);
+    ui::display.println(web::connect_to_router ? "Connecting to" : "Access Point");
+    ui::display.println(web::connect_to_router ? web::router_ssid : web::ap_ssid);
+    ui::display.println(web::ip);
+    ui::display.println(WiFi.status());
     ui::display.display();
 
     ui::last_screen_update = millis();
   }
 
 
-  power::shutdown_on_long_press();
 }

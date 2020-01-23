@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="/d3-selection.min.js"></script>
+</head>
+<body>
+
+<main>
+  <h3>WiFi Config</h3>
+    <label>
+      <p>SSID:</p>
+      <input type="text" list="networks-list" id="ssid" maxlength="255" size="16" autocomplete="on" required>
+    </label>
+
+    <label>
+      <p>Password:</p>
+      <input type="password" id="pass" minlength="10" size="16" required>
+    </label>
+
+    <datalist id="networks-list"></datalist>
+
+    <p id="connection-type">
+      <label>
+        <input type="radio" name="connection-type" value="ap" required> Create Access Point
+      </label>
+      <label>
+        <input type="radio" name="connection-type" value="router" required> Connect to Router
+      </label>
+    </p>
+
+    <p>
+      <button id="connect-network">Connect</button>
+    </p>
+  </form>
+
+  <p>
+    <button id="scan-networks">Scan Networks</button>
+  </p>
+
+  <p>Available networks:</p>
+  <ul id="available-networks"></ul>
+
+
+</main>
+
+<script>
+  "use strict";
+
+  const STATE = 0x00; // Get measurements, power.
+  const COMMAND = 0x01; // Command to position, or drive power.
+  const CONFIGURATION = 0x02; // Get configuration (max limits, direction, PID params).
+  const CONFIGURE = 0x03; // Set configuration.
+  const SCAN_NETWORKS = 0x04; // Scan for wifi networks in range.
+  const AVAILABLE_NETOWRKS = 0x05; // Reply with networks in range.
+  const CONNECT_NETWORK = 0x06; // Connect to network or start access point.
+
+  let socket = new WebSocket("ws://" + location.host + "/ws");
+
+  function scan_networks() {
+    let data = new Uint8Array(1);
+    data[0] = SCAN_NETWORKS;
+    socket.send(data.buffer);
+  }
+
+  function connect_to_network() {
+    let router_selection = d3.select("#connection-type").select('input:checked').node().value;
+    let connect_to_router = (router_selection == "router") ? true : false;
+    let ssid = d3.select("#ssid").node().value;
+    let pass = d3.select("#pass").node().value;
+
+    // We need to encode text fields as utf-8 bytes.
+    let encoder = new TextEncoder();
+    let ssid_bytes = encoder.encode(ssid, "utf-8");
+    let pass_bytes = encoder.encode(pass, "utf-8");
+
+    let data = new Uint8Array(4 + ssid_bytes.length + pass_bytes.length);
+    let offset = 0;
+
+    // Set the function code.
+    data[offset] = CONNECT_NETWORK;
+    offset += 1;
+
+    // Set whether it's an external router or internal access point.
+    data[offset] = connect_to_network ? 1 : 0;
+    offset += 1;
+
+    // Send ssid and password as length byte and text bytes.
+    data[offset] = ssid_bytes.length;
+    offset += 1;
+    data.set(ssid_bytes, offset);
+    offset += ssid_bytes.length;
+
+    data[offset] = pass_bytes.length;
+    offset += 1;
+    data.set(pass_bytes, offset);
+    offset += pass_bytes.length;
+
+    // Send payload.
+    socket.send(data.buffer);
+  }
+
+  // Available networks as list of {ssid, rssi}.
+  let networks = [];
+
+  function receive_networks(data){
+    // Read number of networks.
+    let n = data.getUint8(0);
+    // Interpret each network.
+    let offset = 1;
+    // Decode the names using UTF-8.
+    let decoder = new TextDecoder("utf-8");
+
+    let new_networks = [];
+    for (let i = 0; i < n; i++) {
+      // Read SSID length.
+      let length = data.getUint8(offset);
+      offset += 1;
+      // Read SSID.
+      let ssid = decoder.decode(new DataView(data.buffer, data.byteOffset + offset, length));
+      offset += length;
+      // Read RSSI (wifi strength).
+      let rssi = data.getInt8(offset);
+      offset += 1;
+
+      new_networks.push({ssid, rssi});
+    }
+
+    // Update with scanned networks.
+    networks = new_networks;
+
+    // Show in the page.
+    d3.select("#available-networks")
+      .selectAll("li")
+      .data(networks)
+      .join("li")
+        .text(({ssid, rssi}) => `SSID: ${ssid} RSSI: ${rssi}dBm`);
+
+    // And in the suggested list.
+    d3.select("#networks-list")
+      .selectAll("option")
+      .data(networks)
+      .join("option")
+        .attr("value", ({ssid}) => ssid);
+  }
+
+  socket.onopen = function (event) {
+    scan_networks();
+    d3.select("#scan-networks").on("click", () => scan_networks());
+    d3.select("#connect-network").on("click", () => connect_to_network());
+  };
+
+  socket.onmessage = async function (event) {
+    let buffer;
+    if (event.data instanceof Blob) {
+      buffer = await event.data.arrayBuffer();
+    } else if (event.data instanceof ArrayBuffer) {
+      buffer = event.data;
+    } else {
+      console.error("Received data is not binary!");
+      return;
+    }
+
+    // All messages beging with a code byte followed by data.
+    let code = new DataView(buffer, 0, 1).getUint8(0);
+    let data = new DataView(buffer, 1);
+
+    switch (code) {
+      case AVAILABLE_NETOWRKS:
+        receive_networks(data);
+        return;
+      default:
+        console.warn(`Unknown code: ${code}`);
+        return;
+    }
+  };
+
+</script>
+</body>
+</html>
