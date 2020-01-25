@@ -1,5 +1,12 @@
 #pragma once
 
+#include "timing.hpp"
+#include "byte_encoding.hpp"
+#include "positions.hpp"
+#include "drivers.hpp"
+#include "strains.hpp"
+#include "currents.hpp"
+#include "power.hpp"
 
 #include "freertos/queue.h"
 #include "WiFi.h"
@@ -8,6 +15,7 @@
 #include "AsyncWebSocket.h"
 
 #include <string.h>
+#include <unordered_map>
 
 namespace web {
   // WiFi Bug
@@ -26,13 +34,14 @@ namespace web {
 
   enum APICodes : uint8_t {
 
-    STATE = 0x00, // Get measurements, power.
+    STATE = 0x00, // State measurements and power.
     COMMAND = 0x01, // Command to position, or drive power.
     CONFIGURATION = 0x02, // Get configuration (max limits, direction, PID params).
     CONFIGURE = 0x03, // Set configuration.
     SCAN_NETWORKS = 0x04, // Scan for wifi networks in range.
     AVAILABLE_NETOWRKS = 0x05, // Reply with networks in range.
     CONNECT_NETWORK = 0x06, // Connect to network or start access point.
+    REGISTER_STATE_UPDATES = 0x07, // Register for state updates.
   };
 
   const size_t MAX_LENGTH = 256;
@@ -74,6 +83,12 @@ namespace web {
   // We'll schedule scans on the update loop, and reply to all clients in queue.
   typedef uint32_t ws_client_id;
   QueueHandle_t clients_waiting_networks = {};
+
+  // To get the state, a client should register for it every 50 ms. It then gets
+  // state updates every 10ms, without having to request it everytime.
+  const unsigned long register_duration = 50;
+  QueueHandle_t clients_waiting_state = {};
+  std::unordered_map<ws_client_id, unsigned long> state_register_time;
 
 
   // Handle websocket events.
@@ -142,6 +157,14 @@ namespace web {
 
             // Save new wifi config when we manage to connect.
 
+            return;
+          }
+
+          case REGISTER_STATE_UPDATES: {
+            if (clients_waiting_state) {
+              const ws_client_id id = client->id();
+              xQueueSend(clients_waiting_state, &id, 0);
+            }
             return;
           }
 
@@ -231,6 +254,63 @@ namespace web {
     WiFi.scanDelete();
   }
 
+  // Send state measurements.
+  void send_state(){
+    // Invalid queue, nothing to do.
+    if (not clients_waiting_state) return;
+
+    // Register for state if any new client requests.
+    unsigned long time = millis();
+    ws_client_id id = 0;
+    while(xQueueReceive(clients_waiting_state, &id, 0)) {
+      state_register_time[id] = time;
+    }
+
+    // Remove old clients from registry.
+    for (auto it = state_register_time.begin(); it != state_register_time.end();/* increment in loop */) {
+      unsigned long register_time = it->second;
+      if (time - register_time > register_duration) it = state_register_time.erase(it);
+      else ++it;
+    }
+
+    // Skip if no registered clients left.
+    if (state_register_time.empty()) return;
+
+
+    // Serialise State
+    // ---------------
+
+    // Build state message.
+    const size_t STATE_SIZE = 457;
+    uint8_t state[STATE_SIZE] = {};
+
+    // State message API code.
+    state[0] = STATE;
+    // Send 6*4 bytes of power and timing info.
+    set_float32(state + 1, power::voltage);
+    set_float32(state + 5, power::current);
+    set_float32(state + 9, power::power);
+    set_float32(state + 13, 0.0 /* fps */);
+    set_float32(state + 17, 0.0 /* max loop time */);
+    set_uint32(state + 21, millis());
+    // For each drive channel, send 4*4 bytes of `position, current, power, seek`.
+    for (size_t i = 0; i < 24; i++){
+      set_float32(state + 25 + i * 16, positions::position[i]);
+      set_float32(state + 29 + i * 16, currents::current[i]);
+      set_float32(state + 33 + i * 16, drivers::power[i]);
+      set_float32(state + 37 + i * 16, -1.0 /* position to seek */);
+    }
+    // For each pressure channel, send 1*4 bytes of `strain`.
+    for (size_t i = 0; i < 12; i++){
+      set_float32(state + 409 + i * 4, strains::strain[i]);
+    }
+
+    // Send to all registered clients.
+    for (auto const& client_and_time : state_register_time) {
+      ws.binary(client_and_time.first, state, STATE_SIZE);
+    }
+  }
+
 
   // We want to run the wifi management loop in core 0.
   void update_loop(void * arg);
@@ -262,6 +342,8 @@ namespace web {
 
     // Initialize queue for all clients waiting on available networks.
     clients_waiting_networks = xQueueCreate(10, sizeof(ws_client_id));
+    // Queue for waiting state.
+    clients_waiting_state = xQueueCreate(10, sizeof(ws_client_id));
     // Add handler and initialize websocket at path `/ws`.
     ws.onEvent(on_ws_event);
     server.addHandler(&ws);
@@ -302,18 +384,28 @@ namespace web {
     ok = true;
   }
 
-  void update() {
-    delay(1000);
+  const auto slow_update = throttle_function(
+    [](){
+      // > Browsers sometimes do not correctly close the websocket connection, even
+      // > when the close() function is called in javascript. This will eventually
+      // > exhaust the web server's resources and will cause the server to crash.
+      // > Periodically calling the cleanClients() function from the main loop()
+      // > function limits the number of clients by closing the oldest client when
+      // > the maximum number of clients has been exceeded. This can called be every
+      // > cycle, however, if you wish to use less power, then calling as infrequently
+      // > as once per second is sufficient.
+      ws.cleanupClients();
+    }, 1000 // every 1000 ms
+  );
 
-    // > Browsers sometimes do not correctly close the websocket connection, even
-    // > when the close() function is called in javascript. This will eventually
-    // > exhaust the web server's resources and will cause the server to crash.
-    // > Periodically calling the cleanClients() function from the main loop()
-    // > function limits the number of clients by closing the oldest client when
-    // > the maximum number of clients has been exceeded. This can called be every
-    // > cycle, however, if you wish to use less power, then calling as infrequently
-    // > as once per second is sufficient.
-    ws.cleanupClients();
+  LoopTimer timer = {};
+
+  void update() {
+    // Time and throttle updates.
+    timer.update(10); // delay such that we update only every 10ms.
+    // Slow update only runs sometimes.
+    slow_update();
+
 
     // Reconnect if needed.
     if (new_settings) {
@@ -329,6 +421,9 @@ namespace web {
 
     // Send available networks if any clients requrested them.
     send_network_scan();
+
+    // Send state to registered clients.
+    send_state();
   }
 
   void update_loop(void * arg){
