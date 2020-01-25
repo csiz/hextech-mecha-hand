@@ -53,12 +53,19 @@
   const SCAN_NETWORKS = 0x04; // Scan for wifi networks in range.
   const AVAILABLE_NETOWRKS = 0x05; // Reply with networks in range.
   const CONNECT_NETWORK = 0x06; // Connect to network or start access point.
+  const REGISTER_STATE_UPDATES = 0x07; // Register for state updates.
 
   let socket = new WebSocket("ws://" + location.host + "/ws");
 
   function scan_networks() {
     let data = new Uint8Array(1);
     data[0] = SCAN_NETWORKS;
+    socket.send(data.buffer);
+  }
+
+  function register_state_updates(){
+    let data = new Uint8Array(1);
+    data[0] = REGISTER_STATE_UPDATES;
     socket.send(data.buffer);
   }
 
@@ -143,10 +150,33 @@
         .attr("value", ({ssid}) => ssid);
   }
 
+  let uint32_time_interval = (function (){
+    // To get uint32 arithmetic correctly in javascript we need to cast
+    // our numbers into a typed array. Also capture it in a lambda so
+    // we hide the array from global scope.
+    let v = new Uint32Array(3);
+    return function(a, b) {
+      v[0] = a;
+      v[1] = b;
+      v[2] = b - a;
+      return v[2];
+    };
+  })();
+
+  function receive_state(data){
+    let offset = 0;
+    // TODO: parse state.
+    // TODO: update globals?
+    // TODO: show on page.
+  }
+
   socket.onopen = function (event) {
     scan_networks();
     d3.select("#scan-networks").on("click", () => scan_networks());
     d3.select("#connect-network").on("click", () => connect_to_network());
+    // Keep asking for state updates. The cutoff on the chip side is 50ms, so
+    // if we ask every 30ms we should always recive updates.
+    setInterval(register_state_updates, 30);
   };
 
   socket.onmessage = async function (event) {
@@ -168,6 +198,8 @@
       case AVAILABLE_NETOWRKS:
         receive_networks(data);
         return;
+      case STATE:
+        receive_state(data);
       default:
         console.warn(`Unknown code: ${code}`);
         return;
