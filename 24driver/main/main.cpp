@@ -97,7 +97,7 @@ void loop(){
     ui::display.println(web::connected_to_router ? "Connected to" : "Access Point");
     ui::display.println(web::connected_to_router ? web::router_ssid : web::ap_ssid);
     ui::display.println(web::ip);
-    ui::display.println(web::ok);
+    ui::display.println(web::timer.fps);
     ui::display.display();
 
     ui::last_screen_update = millis();

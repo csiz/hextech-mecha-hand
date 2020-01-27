@@ -17,15 +17,20 @@ struct LoopTimer {
 
   void update(unsigned int throttle_period = 0){
     unsigned long time = millis();
+    unsigned long duration = time - last_loop_time;
+
+    if (duration < throttle_period) {
+      delay(throttle_period - duration);
+      // We waited a bit, so get time again.
+      time = millis();
+    }
+
     last_loop_duration = time - last_loop_time;
+    last_loop_time = time;
 
     // Compute exponentially averaged fps.
     // Make sure not to divide by 0. Assume 1000 fps if duration between frames is less than 1 ms.
     fps = fps_gamma * fps + (1.0 - fps_gamma) * (1000.0 / (last_loop_duration ? last_loop_duration : 1));
-
-    if (last_loop_duration < throttle_period) {
-      delay(throttle_period - last_loop_duration);
-    }
   }
 };
 
