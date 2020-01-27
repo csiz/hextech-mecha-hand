@@ -84,9 +84,10 @@ namespace web {
   typedef uint32_t ws_client_id;
   QueueHandle_t clients_waiting_networks = {};
 
-  // To get the state, a client should register for it every 50 ms. It then gets
-  // state updates every 10ms, without having to request it everytime.
-  const unsigned long register_duration = 50;
+  const unsigned long web_update_period = 50;
+  // To get the state, a client should register for it every 100 ms. It then gets
+  // state updates every 20ms, without having to request it everytime.
+  const unsigned long register_duration = 100;
   QueueHandle_t clients_waiting_state = {};
   std::unordered_map<ws_client_id, unsigned long> state_register_time;
 
@@ -291,7 +292,7 @@ namespace web {
     set_float32(state + 5, power::current);
     set_float32(state + 9, power::power);
     set_float32(state + 13, 0.0 /* fps */);
-    set_float32(state + 17, 0.0 /* max loop time */);
+    set_uint32(state + 17, 0 /* max loop time */);
     set_uint32(state + 21, millis());
     // For each drive channel, send 4*4 bytes of `position, current, power, seek`.
     for (size_t i = 0; i < 24; i++){
@@ -332,8 +333,8 @@ namespace web {
       request->send(SPIFFS, "/index.html", "text/html");
     });
 
-    server.on("/d3-selection.min.js", HTTP_GET, [](AsyncWebServerRequest * request){
-      request->send(SPIFFS, "/d3-selection.min.js", "text/javascript");
+    server.on("/bundle.js", HTTP_GET, [](AsyncWebServerRequest * request){
+      request->send(SPIFFS, "/bundle.js", "text/javascript");
     });
 
 
@@ -402,7 +403,7 @@ namespace web {
 
   void update() {
     // Time and throttle updates.
-    timer.update(10); // delay such that we update only every 10ms.
+    timer.update(web_update_period); // delay such that we update only every 10ms.
     // Slow update only runs sometimes.
     slow_update();
 
