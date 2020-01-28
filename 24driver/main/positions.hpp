@@ -10,7 +10,7 @@ namespace positions {
   uint16_t raw[24] = {0};
 
   // Per channel positions as real number between 0 and 1.0 at full scale.
-  float position[24] = {0.0};
+  volatile float position[24] = {0.0};
 
   // Scale is 2^-12, assuming the voltage reference is also used as the high voltage on the potentiometers.
   const uint16_t MAX_VALUE = 0xFFF;

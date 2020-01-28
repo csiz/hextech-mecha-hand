@@ -25,9 +25,9 @@ namespace power {
   float raw_current_voltage = 0.0;
 
   // Scaled voltage, current, and power use.
-  float voltage = 0.0;
-  float current = 0.0;
-  float power = 0.0;
+  volatile float voltage = 0.0;
+  volatile float current = 0.0;
+  volatile float power = 0.0;
 
   // Default analog read is 12 bit resolution, define the max value we can read.
   const uint16_t FULL_SCALE_CODE = 0xFFF;

@@ -6,7 +6,7 @@
 
 namespace strains {
   // H-bridge voltage (in volts) between 2 strain gauges and 3.3V/2 reference.
-  float strain[12] = {0.0};
+  volatile float strain[12] = {0.0};
 
   // Raw 16bit two's complement values from the ADC.
   int16_t raw[12] = {0};

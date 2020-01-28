@@ -163,7 +163,9 @@ function update_state() {
   // Assume times are ordered, and therefore durations is monotonically decreasing.
   // Check how many update are no longer relevant and remove them.
   let stale = 0;
-  while (stale < state.durations_to_now.length && state.durations_to_now[stale] > (max_duration + min_duration)) stale++;
+  while (// We have to check that we're not overshooting the list.
+    stale < state.durations_to_now.length &&
+    state.durations_to_now[stale] > (max_duration + min_duration)) stale++;
 
   // Usually `stale` should be 1 if we get updates consistently; so using shift is not too shabby.
   state.times = state.times.slice(stale);
@@ -281,6 +283,51 @@ function show_state(){
   state_animation_id = requestAnimationFrame(show_state);
 }
 
+let commands_handle = null;
+
+function send_commands() {
+
+  // Get the power level from each slider.
+  let set_power = [];
+  d3.selectAll("#drivers input.set-power")
+    .each(function() {
+      set_power.push(this.value * 0.1 - 1.0);
+    });
+
+  // Build response and send it via websockets.
+  let data = new Uint8Array(1 + 8*24);
+  let data_view = new DataView(data.buffer);
+  let offset = 0;
+
+  // Set the function code.
+  data[offset] = COMMAND;
+  offset += 1;
+
+
+  for (let i = 0; i < 24; i++){
+    data_view.setFloat32(offset, set_power[i]);
+    // TODO: implement seeking
+    data_view.setFloat32(offset+4, -1.0);
+    offset += 8;
+  }
+
+  // Send payload.
+  socket.send(data.buffer);
+}
+
+function start_command_sliders() {
+  if (commands_handle != null) clearInterval(commands_handle);
+  commands_handle = setInterval(send_commands, 50);
+}
+
+function reset_command_sliders(){
+  if (commands_handle != null) clearInterval(commands_handle);
+  d3.selectAll("#drivers input.set-power").each(function(){
+    this.value = 10;
+  });
+  send_commands();
+}
+
 function setup_graphs() {
   d3.select("#drivers")
     .selectAll("div")
@@ -355,6 +402,18 @@ function setup_graphs() {
           .classed("current", true)
           .attr("stroke", "orangered")
           .attr("fill", "none");
+
+
+        let slide = div.append("input")
+          .classed("set-power", true)
+          .attr("type", "range")
+          .attr("min", "0")
+          .attr("value", "10")
+          .attr("max", "20")
+          .attr("step", "1")
+          .on("mousedown", start_command_sliders)
+          .on("mouseup", reset_command_sliders);
+
       }
     );
 }

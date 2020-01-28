@@ -78,7 +78,6 @@ namespace web {
   AsyncWebServer server(PORT);
   AsyncWebSocket ws("/ws");
 
-
   // Replying with available networks takes a lot of time to finish scanning.
   // We'll schedule scans on the update loop, and reply to all clients in queue.
   typedef uint32_t ws_client_id;
@@ -91,6 +90,28 @@ namespace web {
   QueueHandle_t clients_waiting_state = {};
   std::unordered_map<ws_client_id, unsigned long> state_register_time;
 
+
+  // Commands are sent by clients, they may overlap, allow only 1 to have control.
+  const IPAddress default_ip = {};
+  IPAddress last_command_ip = {};
+  unsigned long last_command_time = 0;
+  // Reserve control for 1 client for 100ms.
+  const unsigned long max_command_time = 200;
+
+  void update_commands(){
+    // No updates if no command is set.
+    if (last_command_ip == default_ip) return;
+    // Nothing to update if we're still within the command holding period.
+    if (millis() - last_command_time < max_command_time) return;
+
+    // We're past the hold time on the last command, reset power levels.
+    for (size_t i = 0; i < 24; i++){
+      drivers::power[i] = 0.0;
+      // TODO: set seek to -1.0
+    }
+
+    last_command_ip = default_ip;
+  }
 
   // Handle websocket events.
   void on_ws_event(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t * data, size_t len) {
@@ -166,6 +187,35 @@ namespace web {
               const ws_client_id id = client->id();
               xQueueSend(clients_waiting_state, &id, 0);
             }
+            return;
+          }
+
+          case COMMAND: {
+            // Command is power and seek for all 24 channels. Use 0.0 for no power and -1.0 for no seeking.
+            if (len != offset + 8*24) return;
+
+            // Check that current command is not blocked by another client.
+            const unsigned long command_time = millis();
+            const IPAddress ip = client->remoteIP();
+            const bool holding = (command_time - last_command_time) < max_command_time;
+            const bool same_client = last_command_ip == ip;
+
+            // Ignore if a different client is holding control.
+            if ((last_command_ip != default_ip) and holding and not same_client) return;
+
+
+            // All good, set power levels.
+            for (size_t i = 0; i < 24; i++) {
+              drivers::power[i] = get_float32(data + offset);
+
+              // TODO: implement seeking.
+              get_float32(data + offset + 4);
+              offset += 8;
+            }
+
+            last_command_ip = ip;
+            last_command_time = command_time;
+
             return;
           }
 
@@ -425,6 +475,9 @@ namespace web {
 
     // Send state to registered clients.
     send_state();
+
+    // Reset commands if no client is holding control.
+    update_commands();
   }
 
   void update_loop(void * arg){

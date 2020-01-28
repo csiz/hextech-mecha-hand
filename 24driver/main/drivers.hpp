@@ -8,7 +8,7 @@
 namespace drivers {
 
   // Speed to drive each motor scaled as [-1.0, +1.0].
-  float power[24] = {0.0};
+  volatile float power[24] = {0.0};
 
   // Whether to short the motor (break) on the off-cycle of the PWM, or
   // leave free-wheeling (coast). Turns out, slow current decay (break)

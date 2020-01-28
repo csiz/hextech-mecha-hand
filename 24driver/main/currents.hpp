@@ -11,7 +11,7 @@ namespace currents {
   // Raw ADC values from the AD7689 (16bit).
   uint16_t raw[24] = {0};
   // Per channel current values in ampere; assuming accurate sense resistors.
-  float current[24] = {0.0};
+  volatile float current[24] = {0.0};
 
 
   // Look-up for each converter's CNV pin.

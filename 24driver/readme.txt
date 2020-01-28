@@ -10,6 +10,6 @@ Requires:
 * Also configure CONFIG_ARDUINO_EVENT_RUNNING_CORE for core 0. This is used by the WiFi library.
 * Install [node js and npm](https://nodejs.org/en/), and update local packages with `npm install`.
 * Build with webpack (we need it to tree-shake d3 so we don't include the entire lib) by running `npm run build`.
-* Install [mkspiffs](https://github.com/igrr/mkspiffs/releases/download/0.2.3/mkspiffs-0.2.3-arduino-esp32-win32.zip) (or use esp-idf v4's spiffsgen.py tool), and run command to create the spiffs image: `mkspiffs -c web/dist -b 4096 -p 256 -s 0x10000 build/spiffs.bin`.
+* Install [mkspiffs](https://github.com/igrr/mkspiffs/releases/download/0.2.3/mkspiffs-0.2.3-arduino-esp32-win32.zip) (or use esp-idf v4's spiffsgen.py tool), and run command to create the spiffs image: `mkspiffs -c web/dist -b 4096 -p 256 -s 0x30000 build/spiffs.bin`.
 * Install [esptool](https://github.com/espressif/esptool) and run command to upload web page to flash/spiffs: `python -m esptool --chip esp32 --port COM3 --baud 115200 write_flash -z 0x110000 build/spiffs.bin`.
 * Get [d3-selection v1](https://github.com/d3/d3-selection/releases), copy to `web/d3-selection.min.js`.
