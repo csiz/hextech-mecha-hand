@@ -2,11 +2,9 @@
 
 #include "timing.hpp"
 #include "byte_encoding.hpp"
-#include "positions.hpp"
-#include "drivers.hpp"
-#include "strains.hpp"
-#include "currents.hpp"
-#include "power.hpp"
+#include "memory.hpp"
+#include "state.hpp"
+
 
 #include "freertos/queue.h"
 #include "WiFi.h"
@@ -44,25 +42,20 @@ namespace web {
     REGISTER_STATE_UPDATES = 0x07, // Register for state updates.
   };
 
-  const size_t MAX_LENGTH = 256;
+  const size_t max_length = 256;
   // Default SSID and password when creating an Access Point.
-  char ap_ssid[MAX_LENGTH] = "ESP32-24Driver";
-  char ap_password[MAX_LENGTH] = "give me a hand";
+  char ap_ssid[max_length] = "ESP32-24Driver";
+  char ap_password[max_length] = "give me a hand";
   // SSID and password when connecting to an existing network.
-  char router_ssid[MAX_LENGTH] = "";
-  char router_password[MAX_LENGTH] = "";
+  char router_ssid[max_length] = "";
+  char router_password[max_length] = "";
   // Whether to connect to a router or start an AP; always fallback on AP.
   bool connect_to_router = false;
   // Whether we actually conencted to router or AP.
   bool connected_to_router = false;
   // Whether new connection needs to be established, and new settings saved.
   bool new_settings = false;
-  // Whether we need to save settings. Do this by setting a flag so we don't
-  // depend on memory from this file. Only memory depends on web.
-  bool save_settings = false;
 
-  // Workaround to switching from AP to STA mode. We'll do it by restarting the chip.
-  bool needs_restart = false;
 
   // Server port to use, 80 for HTTP/WS or 443 for HTTPS/WSS.
   const int PORT = 80;
@@ -74,6 +67,10 @@ namespace web {
   // Whether wifi and everything was initialized without error.
   bool ok = false;
 
+  // Loop timing for the web update.
+  timing::LoopTimer timer = {};
+
+
   // Web servers, and web socket handler.
   AsyncWebServer server(PORT);
   AsyncWebSocket ws("/ws");
@@ -82,8 +79,8 @@ namespace web {
   // We'll schedule scans on the update loop, and reply to all clients in queue.
   typedef uint32_t ws_client_id;
   QueueHandle_t clients_waiting_networks = {};
-
-  const unsigned long web_update_period = 50;
+  // Don't update faster than 50ms.
+  const unsigned long min_web_update_period = 50;
   // To get the state, a client should register for it every 100 ms. It then gets
   // state updates every 20ms, without having to request it everytime.
   const unsigned long register_duration = 100;
@@ -98,17 +95,18 @@ namespace web {
   // Reserve control for 1 client for 100ms.
   const unsigned long max_command_time = 200;
 
+  // Use bit banging utils.
+  using namespace byte_encoding;
+
+
   void update_commands(){
     // No updates if no command is set.
     if (last_command_ip == default_ip) return;
     // Nothing to update if we're still within the command holding period.
     if (millis() - last_command_time < max_command_time) return;
 
-    // We're past the hold time on the last command, reset power levels.
-    for (size_t i = 0; i < 24; i++){
-      drivers::power[i] = 0.0;
-      // TODO: set seek to -1.0
-    }
+    // We're past the hold time on the last command, reset outputs.
+    state::halt_drivers();
 
     last_command_ip = default_ip;
   }
@@ -191,7 +189,7 @@ namespace web {
           }
 
           case COMMAND: {
-            // Command is power and seek for all 24 channels. Use 0.0 for no power and -1.0 for no seeking.
+          // Command is power and seek for all 24 channels. Use 0.0 for no power and -1.0 for no seeking.
             if (len != offset + 8*24) return;
 
             // Check that current command is not blocked by another client.
@@ -203,13 +201,12 @@ namespace web {
             // Ignore if a different client is holding control.
             if ((last_command_ip != default_ip) and holding and not same_client) return;
 
+            using state::state;
 
             // All good, set power levels.
             for (size_t i = 0; i < 24; i++) {
-              drivers::power[i] = get_float32(data + offset);
-
-              // TODO: implement seeking.
-              get_float32(data + offset + 4);
+              state.channels[i].power = get_float32(data + offset);
+              state.channels[i].seek = get_float32(data + offset + 4);
               offset += 8;
             }
 
@@ -332,41 +329,73 @@ namespace web {
     // ---------------
 
     // Build state message.
-    const size_t STATE_SIZE = 457;
-    uint8_t state[STATE_SIZE] = {};
+    const size_t state_size = 457;
+    uint8_t state_msg[state_size] = {};
+
+    using state::state;
 
     // State message API code.
-    state[0] = STATE;
+    state_msg[0] = STATE;
     // Send 6*4 bytes of power and timing info.
-    set_float32(state + 1, power::voltage);
-    set_float32(state + 5, power::current);
-    set_float32(state + 9, power::power);
-    set_float32(state + 13, 0.0 /* fps */);
-    set_uint32(state + 17, 0 /* max loop time */);
-    set_uint32(state + 21, millis());
+    set_float32(state_msg + 1, state.voltage);
+    set_float32(state_msg + 5, state.current);
+    set_float32(state_msg + 9, state.power);
+    set_float32(state_msg + 13, state.fps);
+    set_float32(state_msg + 17, state.max_loop_duration);
+    set_uint32(state_msg + 21, state.update_time);
     // For each drive channel, send 4*4 bytes of `position, current, power, seek`.
     for (size_t i = 0; i < 24; i++){
-      set_float32(state + 25 + i * 16, positions::position[i]);
-      set_float32(state + 29 + i * 16, currents::current[i]);
-      set_float32(state + 33 + i * 16, drivers::power[i]);
-      set_float32(state + 37 + i * 16, -1.0 /* position to seek */);
+      set_float32(state_msg + 25 + i * 16, state.channels[i].position);
+      set_float32(state_msg + 29 + i * 16, state.channels[i].current);
+      set_float32(state_msg + 33 + i * 16, state.channels[i].power);
+      set_float32(state_msg + 37 + i * 16, state.channels[i].seek);
     }
     // For each pressure channel, send 1*4 bytes of `strain`.
     for (size_t i = 0; i < 12; i++){
-      set_float32(state + 409 + i * 4, strains::strain[i]);
+      set_float32(state_msg + 409 + i * 4, state.gauges[i].strain);
     }
 
     // Send to all registered clients.
     for (auto const& client_and_time : state_register_time) {
-      ws.binary(client_and_time.first, state, STATE_SIZE);
+      ws.binary(client_and_time.first, state_msg, state_size);
     }
   }
+
+
+
+  void save_wifi_settings() {
+    using namespace memory;
+
+    set_str("router_ssid", router_ssid);
+    set_str("router_pass", router_password);
+    set_str("ap_ssid", ap_ssid);
+    set_str("ap_pass", ap_password);
+    set_bool("conn_router", connect_to_router);
+
+    commit();
+  }
+
+
+
+  void load_wifi_settings() {
+    using namespace memory;
+
+    get_str("router_ssid", router_ssid, max_length);
+    get_str("router_pass", router_password, max_length);
+    get_str("ap_ssid", ap_ssid, max_length);
+    get_str("ap_pass", ap_password, max_length);
+    get_bool("conn_router", connect_to_router);
+  }
+
 
 
   // We want to run the wifi management loop in core 0.
   void update_loop(void * arg);
 
   void setup(){
+    // Get wifi settings from memory at startup; at the moment this is the only way to switch routers.
+    load_wifi_settings();
+
     // Mount SPIFFS but don't format if it fails (default behaviour).
     if (not SPIFFS.begin()) return;
 
@@ -435,37 +464,31 @@ namespace web {
     ok = true;
   }
 
-  const auto slow_update = throttle_function(
-    [](){
-      // > Browsers sometimes do not correctly close the websocket connection, even
-      // > when the close() function is called in javascript. This will eventually
-      // > exhaust the web server's resources and will cause the server to crash.
-      // > Periodically calling the cleanClients() function from the main loop()
-      // > function limits the number of clients by closing the oldest client when
-      // > the maximum number of clients has been exceeded. This can called be every
-      // > cycle, however, if you wish to use less power, then calling as infrequently
-      // > as once per second is sufficient.
-      ws.cleanupClients();
-    }, 1000 // every 1000 ms
-  );
+  // Update that runs only once a few seconds.
+  const auto slow_update = timing::throttle_function([](){
+    // > Browsers sometimes do not correctly close the websocket connection, even
+    // > when the close() function is called in javascript. This will eventually
+    // > exhaust the web server's resources and will cause the server to crash.
+    // > Periodically calling the cleanClients() function from the main loop()
+    // > function limits the number of clients by closing the oldest client when
+    // > the maximum number of clients has been exceeded. This can called be every
+    // > cycle, however, if you wish to use less power, then calling as infrequently
+    // > as once per second is sufficient.
+    ws.cleanupClients();
+  }, /* throttle_period (millis) = */ 1000);
 
-  LoopTimer timer = {};
 
+  // Update loop running as fast as the wifi can send stuff.
   void update() {
     // Time and throttle updates.
-    timer.update(web_update_period); // delay such that we update only every 10ms.
+    timer.update(min_web_update_period); // delay such that we update only every 10ms.
     // Slow update only runs sometimes.
     slow_update();
 
 
     // Reconnect if needed.
     if (new_settings) {
-      new_settings = false;
-      save_settings = true;
-      needs_restart = true;
-    }
-
-    if (needs_restart and not save_settings) {
+      save_wifi_settings();
       ESP.restart();
     }
 

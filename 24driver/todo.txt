@@ -11,4 +11,5 @@ TODO PCB
 --------
 
 [ ] Adjust resistance for the motor LED. Green is stronger than orange, put higher resistance for green.
-[ ] Maybe increase resistance for both, to reduce brightness a bit more.
+[x] Maybe increase resistance for both, to reduce brightness a bit more. Orange seems fine brightness wise.
+[ ] Try to leave ESP32 VIN pin disconnected so we can use USB and battery at the same time.

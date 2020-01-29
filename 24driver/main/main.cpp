@@ -20,16 +20,25 @@ ADC; serial interface.
 Code Outline
 ------------
 
-* main.cpp: Top level setup and loop. Manage all interactions between modules below.
+### Top level
+* main.cpp: Top level setup and loop. Handles state updates.
+* state.hpp: Filtered state of each channel, and commands. Common interface.
+* ui.hpp: User interaction via buttons and the OLED screen.
+* web.hpp: Web server and websocket comms.
+### Hardware interface
 * pins.hpp: Defines physical connections to the ESP32 chip, and I2C addresses for slave ICs.
 * power.hpp: Power control and measurements.
-* ui.hpp: User interaction via buttons and the OLED screen.
 * drivers.hpp: Control driving power for each motor.
 * positions.hpp: Read positions corresponding to each motor.
 * strains.hpp: Read strain gauges.
 * currents.hpp: Read per motor current use.
+### Utils
 * pid.hpp: PID control logic.
-
+* byte_encoding.hpp: Bit banging utilities for web serialization.
+* timing.hpp: Time utilities.
+* i2c.hpp: Utils to send/receive over I2C wires.
+* spi.hpp: Utils to send/receive over spi.
+* memory.hpp: Utils to store settings in offline chip memory.
 */
 
 
@@ -43,14 +52,20 @@ Code Outline
 #include "strains.hpp"
 #include "web.hpp"
 #include "memory.hpp"
+#include "pid.hpp"
+#include "state.hpp"
+
+// Time the main loop.
+timing::LoopTimer timer;
+// Don't update faster than 1ms.
+const unsigned long min_loop_update_period = 1;
+
+// Exponentially average all state measurements with 30ms half life.
+const timing::ExponentialAverage state_exp_avg = {0.030};
 
 void setup(){
   // Keep the board turned on before anything else.
   power::setup();
-
-  // Load memory configuration.
-  memory::setup();
-  memory::load();
 
   // Initialize inter-chip comms before the chips themselves.
   i2c::setup();
@@ -63,11 +78,23 @@ void setup(){
   positions::setup();
   strains::setup();
 
+  // Setup internal memory, used by web and state.
+  memory::setup();
+
+  // Load state params into memory.
+  state::setup();
+
   // Start webserver and its loop (they're configured to run in core 0).
   web::setup();
+
+  // Start timing.
+  timer.begin();
 }
 
 void loop(){
+  // Time and throttle updates.
+  timer.update(min_loop_update_period);
+
   // Update power measurements, and check if we need to turn-off.
   power::update();
 
@@ -76,32 +103,63 @@ void loop(){
   positions::update();
   strains::update();
 
+
+  // Updates to centralized state.
+  using state::state;
+  const float elapsed = timer.loop_duration;
+  using mystd::clamp;
+
+  // Update state basics.
+  state.current = state_exp_avg(power::current, state.current, elapsed);
+  state.voltage = state_exp_avg(power::voltage, state.voltage, elapsed);
+  state.power = state_exp_avg(power::power, state.power, elapsed);
+  state.energy += state.power * elapsed;
+  state.fps = timer.fps;
+  state.max_loop_duration = timer.max_loop_duration;
+  state.update_time = timer.update_time;
+
+  // Update driver channels.
+  for (size_t i = 0; i < 24; i++){
+    auto & channel = state.channels[i];
+
+    // Get position, invert and smooth out.
+    auto const& raw_position = positions::position[i];
+    const float position = channel.reverse_input ? (1.0 - raw_position) : raw_position;
+    channel.position = state_exp_avg(position, channel.position, elapsed);
+
+    // Store smoothed current measurements.
+    channel.current = state_exp_avg(currents::current[i], channel.current, elapsed);
+
+    // Power per drive channel is a combination seeking and base power.
+    float power = channel.power;
+
+    // PID control if channel is seeking.
+    if (channel.seek != -1.0) {
+      // Clamp position seeking to maximum values we can reach; as calibrated by user.
+      const float seek = clamp(channel.seek, channel.min_position, channel.max_position);
+      // Add to base power; note that base power would usually be 0.
+      power += channel.pid.update(seek, channel.position, elapsed);
+    }
+
+    // Set driver power, clampped and potentially inverted.
+    drivers::power[i] = clamp(channel.reverse_output ? -power : power, -1.0, +1.0);
+  }
+
+  // Update gauges.
+  for (size_t i = 0; i < 12; i++){
+    auto & gauge = state.gauges[i];
+
+    // Scale the voltage to appropriate units; as calibrated by the user.
+    const float scaled_strain = (strains::strain[i] - gauge.zero_offset) * gauge.coefficient;
+    // Smooth out strain gauge measurements.
+    gauge.strain = state_exp_avg(scaled_strain, gauge.strain, elapsed);
+  }
+
+
   // Send updates to driver chips.
   drivers::update();
 
-  // Save new configs if needed.
-  if (web::save_settings) {
-    memory::save_wifi();
-    web::save_settings = false;
-  }
 
-  // TODO: remove
-  if (millis() - ui::last_screen_update > 500) {
-    ui::display.clearDisplay();
-    ui::display.setTextSize(1);
-    ui::display.setTextColor(SSD1306_WHITE);
-    ui::display.setCursor(0, 0);
-    // ui::display.println(power::voltage, 5);
-    // ui::display.println(power::current * 1000, 5);
-    // ui::display.println(power::raw_current_voltage, 5);
-    ui::display.println(web::connected_to_router ? "Connected to" : "Access Point");
-    ui::display.println(web::connected_to_router ? web::router_ssid : web::ap_ssid);
-    ui::display.println(web::ip);
-    ui::display.println(web::timer.fps);
-    ui::display.display();
-
-    ui::last_screen_update = millis();
-  }
-
-
+  // Throttled update of the screen and buttons.
+  ui::update();
 }

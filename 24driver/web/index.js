@@ -197,7 +197,7 @@ function receive_state(data){
   offset += 4;
   state.fps = data.getFloat32(offset);
   offset += 4;
-  state.max_loop_time = data.getUint32(offset);
+  state.max_loop_time = data.getFloat32(offset);
   offset += 4;
   state.last_update_time = data.getUint32(offset);
   offset += 4;
@@ -267,6 +267,7 @@ let current_line = d3.line()
 let state_animation_id = null;
 
 function show_state(){
+  // TODO: show power and timing info
   update_state();
 
   d3.selectAll("#drivers>div")
@@ -404,13 +405,14 @@ function setup_graphs() {
           .attr("fill", "none");
 
 
-        let slide = div.append("input")
+        let power_slide = div.append("input")
           .classed("set-power", true)
           .attr("type", "range")
           .attr("min", "0")
           .attr("value", "10")
           .attr("max", "20")
           .attr("step", "1")
+          .attr("width", width)
           .on("mousedown", start_command_sliders)
           .on("mouseup", reset_command_sliders);
 
