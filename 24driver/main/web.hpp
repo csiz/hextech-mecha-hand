@@ -63,9 +63,11 @@ namespace web {
   // IP address to get to the server.
   IPAddress ip = {};
 
-  // TODO: also have some form of error reporting and error check.
   // Whether wifi and everything was initialized without error.
   bool ok = false;
+
+  // Status whilst wifi is not ok.
+  const char * status = "Connecting WiFi...";
 
   // Loop timing for the web update.
   timing::LoopTimer timer = {};
@@ -240,14 +242,15 @@ namespace web {
       }
     }
 
+    status = "Starting AP...";
+
     // Start as wifi access point if we can't connect to known network.
     connected_to_router = false;
     if(WiFi.softAP(ap_ssid, ap_password)) {
       ip = WiFi.softAPIP();
       ok = true;
-
     } else {
-      // TODO: report we can't start an access point.
+      status = "Can't start AP!";
     }
   }
 
@@ -389,8 +392,8 @@ namespace web {
 
 
 
-  // We want to run the wifi management loop in core 0.
-  void update_loop(void * arg);
+  // We want to run some setup and web server loop in core 0.
+  void setup_on_web_core(void * arg);
 
   void setup(){
     // Get wifi settings from memory at startup; at the moment this is the only way to switch routers.
@@ -398,8 +401,6 @@ namespace web {
 
     // Mount SPIFFS but don't format if it fails (default behaviour).
     if (not SPIFFS.begin()) return;
-
-    connect_wifi();
 
     // Web pages
     // ---------
@@ -442,18 +443,13 @@ namespace web {
     });
 
 
-
     // Start
     // -----
-
-    // Start HTML and WebSocket server, hopefully configured for core 0.
-    server.begin();
-
 
     // Start the wifi update loop. We can't use delay in the server callbacks, so
     // we need to manually schedule tasks (like wifi scanning).
     xTaskCreatePinnedToCore(
-      update_loop, // Function to run.
+      setup_on_web_core, // Function to run.
       "wifi_loop", // Name.
       10000, // Stack size in words.
       nullptr,  // Task args.
@@ -503,8 +499,19 @@ namespace web {
     update_commands();
   }
 
-  void update_loop(void * arg){
-    while(true) update();
+  // Function to run in the core dedicated to the web server.
+  void setup_on_web_core(void * arg){
+    // Wait for wifi connection.
+    connect_wifi();
+    if (ok){
+      // Start HTML and WebSocket server.
+      // Note internal event loop from AsyncTCP needs to be configured for core 0 too.
+      server.begin();
+      // Start the update loop.
+      while(true) update();
+    }
+    // Don't start server and managing loop if wifi not enabled. The failure should be
+    // Marked on screen from the ui.
   }
 
 }

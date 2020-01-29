@@ -9,14 +9,14 @@
 namespace power {
 
 
-  // Flag to signal low battery voltage.
-  bool low_voltage = false;
+  // 2 series LiPo cell recommended battery cutoff + 0.1V leeway.
+  const float min_battery_voltage = 6.7;
 
-  // Time when low voltage detected (millis).
-  unsigned long low_voltage_begin = 0;
+  // Time of the last nominal voltage (millis).
+  unsigned long last_nominal_voltage_time = 0;
 
   // Warn of low voltage for 3 seconds.
-  const unsigned long low_voltage_warn_time = 3000;
+  const unsigned long low_voltage_warn_duration = 3000;
 
   // Voltage and current values.
   uint16_t raw_voltage = 0;
@@ -28,6 +28,12 @@ namespace power {
   volatile float voltage = 0.0;
   volatile float current = 0.0;
   volatile float power = 0.0;
+
+
+  inline bool low_battery(){
+    return voltage <= min_battery_voltage;
+  }
+
 
   // Default analog read is 12 bit resolution, define the max value we can read.
   const uint16_t FULL_SCALE_CODE = 0xFFF;
@@ -104,8 +110,6 @@ namespace power {
 
   void update() {
     shutdown_on_long_press();
-    // TODO: also shutdown on low voltage (less than 6.6V ie. 3.3V per battery cell).
-
     // Update power usage.
 
     // We'll use the function provided to help calibration. Especially helpful since
@@ -123,5 +127,17 @@ namespace power {
 
     // Compute current power use, ignoring negative current values.
     power = current > 0.0 ? voltage * current : 0.0;
+
+
+    // Shutdown on low voltage.
+    if (low_battery()) {
+      // Shutdown the ESP32 if we're past the warning duration on low power!
+      if (millis() - last_nominal_voltage_time > low_voltage_warn_duration) {
+        turnoff();
+      }
+    } else {
+      // We're not running on low power, so keep nominal voltage time up to date.
+      last_nominal_voltage_time = millis();
+    }
   }
 }

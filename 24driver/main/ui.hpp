@@ -4,6 +4,7 @@
 #include "timing.hpp"
 #include "web.hpp"
 #include "state.hpp"
+#include "power.hpp"
 
 #include "Wire.h"
 #include "Arduino.h"
@@ -81,7 +82,7 @@ namespace ui {
         snprintf(line, max_chars, "AP: %s", web::ap_ssid);
       }
     } else {
-      snprintf(line, max_chars, "Error initialzing WiFi!");
+      snprintf(line, max_chars, web::status);
     }
     display.println(line);
 
@@ -94,10 +95,15 @@ namespace ui {
     display.println(line);
 
     // Fourth line shows power information.
-    snprintf(line, max_chars, "%.1fV %.3fA %.1fJ", state.voltage, state.current, state.energy);
+    if (power::low_battery()){
+      // Warn if shutting down due to low battery power.
+      snprintf(line, max_chars, "%.1fV < %.1fV Power off", state.voltage, power::min_battery_voltage);
+    } else {
+      // Normal mode operation shows more energy use info.
+      snprintf(line, max_chars, "%.1fV %.3fA %.1fJ", state.voltage, state.current, state.energy);
+    }
     display.println(line);
 
-    // TODO: show shutdown on low voltage message.
 
     display.display();
 
