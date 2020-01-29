@@ -207,7 +207,7 @@ namespace web {
 
             // All good, set power levels.
             for (size_t i = 0; i < 24; i++) {
-              state.channels[i].power = get_float32(data + offset);
+              state.channels[i].power_offset = get_float32(data + offset);
               state.channels[i].seek = get_float32(data + offset + 4);
               offset += 8;
             }

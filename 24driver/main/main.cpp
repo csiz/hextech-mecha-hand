@@ -131,7 +131,7 @@ void loop(){
     channel.current = state_exp_avg(currents::current[i], channel.current, elapsed);
 
     // Power per drive channel is a combination seeking and base power.
-    float power = channel.power;
+    float power = channel.power_offset;
 
     // PID control if channel is seeking.
     if (channel.seek != -1.0) {
@@ -140,6 +140,8 @@ void loop(){
       // Add to base power; note that base power would usually be 0.
       power += channel.pid.update(seek, channel.position, elapsed);
     }
+
+    channel.power = power;
 
     // Set driver power, clampped and potentially inverted.
     drivers::power[i] = clamp(channel.reverse_output ? -power : power, -1.0, +1.0);

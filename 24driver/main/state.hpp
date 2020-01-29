@@ -21,6 +21,8 @@ namespace state {
     float current = 0.0;
     // Position to seek, or -1 to disable.
     float seek = -1.0;
+    // Power offset in addition to the seek position.
+    float power_offset = 0.0;
     // To adjust for how cables are connected to the robot, we can redefine
     // the direction of the outputs and inputs. Pick a forward direction
     // in the model and then adjust the parameters below such that power +1
@@ -67,8 +69,9 @@ namespace state {
   // Reset drive power to 0 and disable seeking.
   void halt_drivers(){
     for (size_t i = 0; i < 24; i++){
-      state.channels[i].power = 0.0;
+      state.channels[i].power_offset = 0.0;
       state.channels[i].seek = -1.0;
+      state.channels[i].power = 0.0;
     }
   }
 
