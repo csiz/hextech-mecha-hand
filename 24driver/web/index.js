@@ -233,7 +233,7 @@ const width = 200;
 const height = 50;
 // Hide latest few ms of state updates to avoid flickering.
 const time_scale = d3.scaleLinear([max_duration, min_duration], [0.0, width]);
-const position_seek_scale = d3.scaleLinear([0.0, 1.0], [0.0, height]);
+const position_seek_scale = d3.scaleLinear([0.0, 1.0], [height, 0.0]);
 const power_scale = d3.scaleLinear([-1.0, +1.0], [height, 0.0]);
 // Current is in Ampere, but usually it's very low. This might overflow.
 const current_scale = d3.scaleLinear([0.0, 0.5], [height, 0.0]);
@@ -295,6 +295,24 @@ function send_commands() {
       set_power.push(this.value * 0.1 - 1.0);
     });
 
+  // Get whether channels is actively seeking.
+  let seek_active = [];
+  d3.selectAll("#drivers input.set-seek-active")
+    .each(function() {
+      seek_active.push(this.checked);
+    });
+
+  // Get seek positions.
+  let set_seek = [];
+  d3.selectAll("#drivers input.set-seek")
+  .each(function(_channel, i) {
+    // Get [0.0, 1.0] seek position from the slider.
+    let seek_position = this.value * 0.05;
+    // TODO: interpolate between channel min pos and channel max pos.
+    // Send -1 if not actively seeking.
+    set_seek.push(seek_active[i] ? seek_position : -1.0);
+  });
+
   // Build response and send it via websockets.
   let data = new Uint8Array(1 + 8*24);
   let data_view = new DataView(data.buffer);
@@ -307,8 +325,7 @@ function send_commands() {
 
   for (let i = 0; i < 24; i++){
     data_view.setFloat32(offset, set_power[i]);
-    // TODO: implement seeking
-    data_view.setFloat32(offset+4, -1.0);
+    data_view.setFloat32(offset+4, set_seek[i]);
     offset += 8;
   }
 
@@ -317,16 +334,37 @@ function send_commands() {
 }
 
 function start_command_sliders() {
-  if (commands_handle != null) clearInterval(commands_handle);
+  // Skip if command sliders already activated.
+  if (commands_handle != null) return;
   commands_handle = setInterval(send_commands, 50);
 }
 
 function reset_command_sliders(){
-  if (commands_handle != null) clearInterval(commands_handle);
+  // Clear commands sliders; if activated.
+  if (commands_handle != null) {
+    clearInterval(commands_handle);
+    commands_handle = null;
+  }
+  // Reset power levels to 0.
   d3.selectAll("#drivers input.set-power").each(function(){
     this.value = 10;
   });
+  // Disable seeking, but note that we leave all seek positions as they are.
+  d3.selectAll("#drivers input.set-seek-active").property("checked", false);
+
+  // Send the inputs that were reset.
   send_commands();
+}
+
+function reset_command_sliders_if_not_seeking(){
+  // Check if all seek checkboxes are disabled, and stop commands.
+  let seek_active = [];
+  d3.selectAll("#drivers input.set-seek-active")
+    .each(function() {
+      seek_active.push(this.checked);
+    });
+  // If every checkbox is in-active, then stop commands.
+  if (seek_active.every(active => !active)) reset_command_sliders();
 }
 
 function setup_graphs() {
@@ -405,17 +443,63 @@ function setup_graphs() {
           .attr("fill", "none");
 
 
-        let power_slide = div.append("input")
+        let inputs_grid = div.append("div")
+          .style("display", "grid")
+          .style("grid-template-columns", "1fr 2fr")
+          .style("grid-column-gap", "10px");
+
+        // Power
+        inputs_grid.append("label")
+          .text("Power:");
+
+        inputs_grid.append("input")
           .classed("set-power", true)
           .attr("type", "range")
           .attr("min", "0")
           .attr("value", "10")
           .attr("max", "20")
           .attr("step", "1")
-          .attr("width", width)
           .on("mousedown", start_command_sliders)
-          .on("mouseup", reset_command_sliders);
+          .on("mouseup", function() {
+            // Reset this slider to it's center position.
+            this.value = 10;
+            // Stop commands if all conditions are met.
+            reset_command_sliders_if_not_seeking();
+          });
 
+
+        // Seek
+        let seek_label = inputs_grid.append("label");
+
+        seek_label.append("input")
+          .classed("set-seek-active", true)
+          .attr("id", (_channel, i) => `set-seek-active-${i}`)
+          .attr("type", "checkbox")
+          .on("input", function() {
+            if (this.checked) {
+              // If this seek checkbox was set, then start streaming seek commands.
+              start_command_sliders();
+            } else {
+              // Possibly stop commands if not seeking.
+              reset_command_sliders_if_not_seeking();
+            }
+          });
+
+        seek_label.append("span")
+          .text("Seek:");
+
+        inputs_grid.append("input")
+          .classed("set-seek", true)
+          .attr("id", (_channel, i) => `set-seek-${i}`)
+          .attr("type", "range")
+          .attr("min", "0")
+          .attr("value", "10")
+          .attr("max", "20")
+          .attr("step", "1")
+          .on("mousedown", function (_channel, i) {
+            d3.select(`#set-seek-active-${i}`).property("checked", true);
+            start_command_sliders();
+          });
       }
     );
 }
