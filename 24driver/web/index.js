@@ -147,8 +147,8 @@ let uint32_time_interval = (function (){
 
 // Store up to 5 seconds of data (~ 500 data points per measurement per channel).
 const max_duration = 5.0;
-// Skip up to 100ms of the latest data to avoid shakiness.
-const min_duration = 0.1;
+// Ignore first few milliseconds to avoid flickering from slightly delayed data.
+const min_duration = 0.100;
 
 // Store the state measurements from the chip.
 let state = {
@@ -160,7 +160,8 @@ let state = {
   last_update_time: 0.0,
   last_update_local_time: Date.now(),
   last_connect_local_time: 0,
-  duration_since_last_update: 0.0,
+  local_duration_since_last_update: 0.0,
+  smooth_elapsed_difference: 0.0,
 
   // List of all update times.
   times: [],
@@ -175,12 +176,17 @@ let state = {
   pressures: d3.range(12).map((i) => ({strain: []}))
 };
 
+
+
+
 function update_state() {
-  state.duration_since_last_update = (Date.now() - state.last_update_local_time) * 0.001;
+  let now = Date.now();
+
+  state.local_duration_since_last_update = (now - state.last_update_local_time) * 0.001;
 
   // Recompute durations since this update; using uint32 arithmetic, and converting ms to s.
   state.durations_to_last = state.times.map(t => uint32_time_interval(t, state.last_update_time) * 0.001);
-  state.durations_to_now = state.durations_to_last.map(t => t + state.duration_since_last_update);
+  state.durations_to_now = state.durations_to_last.map(t => t + state.local_duration_since_last_update);
 
   // Assume times are ordered, and therefore durations is monotonically decreasing.
   // Check how many update are no longer relevant and remove them.
@@ -189,10 +195,10 @@ function update_state() {
     stale < state.durations_to_now.length &&
     state.durations_to_now[stale] > (max_duration + min_duration)) stale++;
 
-  // Usually `stale` should be 1 if we get updates consistently; so using shift is not too shabby.
+  // Cut off all stale updates.
   state.times = state.times.slice(stale);
-  state.durations_to_last.slice(stale);
-  state.durations_to_now.slice(stale);
+  state.durations_to_last = state.durations_to_last.slice(stale);
+  state.durations_to_now = state.durations_to_now.slice(stale);
   for (let j = 0; j < 24; j++) {
     state.channels[j].position = state.channels[j].position.slice(stale);
     state.channels[j].current = state.channels[j].current.slice(stale);
@@ -202,6 +208,19 @@ function update_state() {
   for (let j = 0; j < 12; j++) {
     state.pressures[j].strain.slice(stale);
   }
+}
+
+function update_and_show_state(){
+  update_state();
+  show_state();
+}
+
+function clamp(num, min, max) {
+  return num <= min ? min : num >= max ? max : num;
+}
+
+function exp_average(value, last_value, gamma){
+  return value * gamma + last_value * (1-gamma);
 }
 
 function receive_state(data){
@@ -221,12 +240,34 @@ function receive_state(data){
   offset += 4;
   state.max_loop_time = data.getFloat32(offset);
   offset += 4;
-  state.last_update_time = data.getUint32(offset);
+  let update_time = data.getUint32(offset);
+  let elapsed = uint32_time_interval(state.last_update_time, update_time) * 0.001;
+  state.last_update_time = update_time;
   offset += 4;
 
   state.times.push(state.last_update_time);
 
-  state.last_update_local_time = Date.now();
+  let now = Date.now();
+  let elapsed_local = (now - state.last_update_local_time) * 0.001;
+  state.last_update_local_time = now;
+
+
+  // Adjust for network latency, see `duration_at_index` for explanation.
+
+  // Compute smoothed elapsed time differences, but only if they're small enough.
+  let diff = elapsed_local - elapsed;
+
+  // Smoothed time difference between chip time and local time. We need this
+  // to avoid graphs jumping around due to different latency between state updates.
+  let smooth_dif = exp_average(
+    diff,
+    state.smooth_elapsed_difference,
+    0.9
+  );
+
+  // Clamp the difference to at most a half second interval either side.
+  state.smooth_elapsed_difference = clamp(smooth_dif, -0.500, 0.500);
+
 
   let channels = state.channels;
   for (let i = 0; i < 24; i++) {
@@ -262,9 +303,14 @@ const current_scale = d3.scaleLinear([0.0, 0.5], [height, 0.0]);
 
 // Use the last update time as long as we're getting updates consistently.
 function duration_at_index(i) {
-  return state.duration_since_last_update < min_duration
-    ? time_scale(state.durations_to_last[i])
-    : time_scale(state.durations_to_now[i]);
+  // Adjust time to account for spiky network latency.
+  //
+  // If a loop elapsed time on the esp32 is lower than update elapsed time in the browser
+  // then there was extra latency on the network. We should compensate for this by adding the
+  // difference. Since the difference is a crude estimate we need to smooth it out over time.
+  // Note that it should always oscillate around 0s difference, which would be the case if
+  // there was perfectly constant latency between esp32 updates and the browser.
+  return time_scale(state.durations_to_now[i] + state.smooth_elapsed_difference);
 }
 
 let position_line = d3.line()
@@ -475,8 +521,8 @@ function setup_graphs() {
           .attr("value", "10")
           .attr("max", "20")
           .attr("step", "1")
-          .on("mousedown", start_command_sliders)
-          .on("mouseup", function() {
+          .on("input", start_command_sliders)
+          .on("change", function() {
             // Reset this slider to it's center position.
             this.value = 10;
             // Stop commands if all conditions are met.
@@ -512,7 +558,7 @@ function setup_graphs() {
           .attr("value", "10")
           .attr("max", "20")
           .attr("step", "1")
-          .on("mousedown", function (_channel, i) {
+          .on("input", function (_channel, i) {
             d3.select(`#set-seek-active-${i}`).property("checked", true);
             start_command_sliders();
           });
@@ -611,8 +657,7 @@ connect();
 
 // Update state and check if we need to reconnect.
 function update(){
-  update_state();
-  requestAnimationFrame(show_state);
+  requestAnimationFrame(update_and_show_state);
 
   // Force disconnect; which will trigger a reconnect.
   if (connection_problem()) close();
