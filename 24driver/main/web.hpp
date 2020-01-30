@@ -16,8 +16,18 @@
 #include <unordered_map>
 
 namespace web {
+  // AsyncWebServer Bug
+  // ------------------
+  // TODO: maybe switch to arduino websockets?
+  //
+  // The ESP32 randomly restarts when clients are disconnecting. Probably some stray pointer...
+  // The first line of the error shows up as "Guru Meditation Error: Core  0 panic'ed (LoadProhibited".
+  // Similar problem to [this issue](https://github.com/me-no-dev/ESPAsyncWebServer/issues/325).
+
+
   // WiFi Bug
   // --------
+  // TODO: potentially fix wifi connection bug by upgrading to esp-idf-v4
   //
   // Can't switch from AP mode to STA. The docs says we should turn wifi off,
   // but when trying to do that we get an error about `wifi not start`...
@@ -103,6 +113,8 @@ namespace web {
   // Send data or ditch client if queue is full. Fail fast, eh!
   inline void send_binary(uint32_t id, const char * message, size_t len){
     auto client = ws.client(id);
+    if (client == nullptr) return;
+
     // Send message if we can.
     if (client->canSend()) client->binary(message, len);
     // Otherwise ditch connection and await reconnect.
@@ -129,11 +141,7 @@ namespace web {
   // Handle websocket events.
   void on_ws_event(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t * data, size_t len) {
     switch(type){
-      case WS_EVT_CONNECT: {
-        // Auto ping every second.
-        client->keepAlivePeriod(1);
-        return;
-      }
+      case WS_EVT_CONNECT: return;
       case WS_EVT_DISCONNECT: return;
       case WS_EVT_PONG: return;
       case WS_EVT_ERROR: return;
@@ -468,7 +476,7 @@ namespace web {
     xTaskCreatePinnedToCore(
       setup_on_web_core, // Function to run.
       "wifi_loop", // Name.
-      10000, // Stack size in words.
+      16384, // Stack size in words.
       nullptr,  // Task args.
       0, // Priority.
       nullptr, // Task handle.
