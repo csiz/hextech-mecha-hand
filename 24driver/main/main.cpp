@@ -141,10 +141,14 @@ void loop(){
       power += channel.pid.update(seek, channel.position, elapsed);
     }
 
+    // Clamp to output range.
+    power = clamp(power, -1.0, +1.0);
+
+    // Update state power; ignoring direction.
     channel.power = power;
 
     // Set driver power, clampped and potentially inverted.
-    drivers::power[i] = clamp(channel.reverse_output ? -power : power, -1.0, +1.0);
+    drivers::power[i] = channel.reverse_output ? -power : power;
   }
 
   // Update gauges.
