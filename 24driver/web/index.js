@@ -16,18 +16,34 @@ const AVAILABLE_NETOWRKS = 0x05; // Reply with networks in range.
 const CONNECT_NETWORK = 0x06; // Connect to network or start access point.
 const REGISTER_STATE_UPDATES = 0x07; // Register for state updates.
 
-let socket = new WebSocket("ws://" + location.host + "/ws");
+// Websocket url.
+const url = "ws://" + location.host + "/ws";
+
+
+// Websocket, set by connect().
+let socket = null;
+
+// Send messages only if socket is ready.
+function send(message){
+  if (socket != null && socket.readyState == socket.OPEN) socket.send(message);
+}
+
+// Close socket if not socket not already closed.
+function close(){
+  if (socket != null && socket.readyState == socket.CLOSE) socket.close();
+}
+
 
 function scan_networks() {
   let data = new Uint8Array(1);
   data[0] = SCAN_NETWORKS;
-  socket.send(data.buffer);
+  send(data.buffer);
 }
 
 function register_state_updates(){
   let data = new Uint8Array(1);
   data[0] = REGISTER_STATE_UPDATES;
-  socket.send(data.buffer);
+  send(data.buffer);
 }
 
 function connect_to_network() {
@@ -64,7 +80,7 @@ function connect_to_network() {
   offset += pass_bytes.length;
 
   // Send payload.
-  socket.send(data.buffer);
+  send(data.buffer);
 }
 
 // Available networks as list of {ssid, rssi}.
@@ -111,6 +127,11 @@ function receive_networks(data){
       .attr("value", ({ssid}) => ssid);
 }
 
+// Add functionality to the buttons.
+d3.select("#scan-networks").on("click", () => scan_networks());
+d3.select("#connect-network").on("click", () => connect_to_network());
+
+
 let uint32_time_interval = (function (){
   // To get uint32 arithmetic correctly in javascript we need to cast
   // our numbers into a typed array. Also capture it in a lambda so
@@ -138,6 +159,7 @@ let state = {
   max_loop_time: 0.0,
   last_update_time: 0.0,
   last_update_local_time: Date.now(),
+  last_connect_local_time: 0,
   duration_since_last_update: 0.0,
 
   // List of all update times.
@@ -264,12 +286,8 @@ let current_line = d3.line()
 
 
 
-let state_animation_id = null;
-
 function show_state(){
   // TODO: show power and timing info
-  update_state();
-
   d3.selectAll("#drivers>div")
     .data(state.channels)
     .each(function (channel, i) {
@@ -280,8 +298,6 @@ function show_state(){
       div.select("path.power").attr("d", power_line(channel.power));
       div.select("path.current").attr("d", current_line(channel.current));
     });
-
-  state_animation_id = requestAnimationFrame(show_state);
 }
 
 let commands_handle = null;
@@ -330,7 +346,7 @@ function send_commands() {
   }
 
   // Send payload.
-  socket.send(data.buffer);
+  send(data.buffer);
 }
 
 function start_command_sliders() {
@@ -504,52 +520,108 @@ function setup_graphs() {
     );
 }
 
+// Setup graphs and show initial state.
 setup_graphs();
 show_state();
 
-socket.onopen = function (event) {
-  d3.select("#status").text("connected");
 
-  scan_networks();
-  d3.select("#scan-networks").on("click", () => scan_networks());
-  d3.select("#connect-network").on("click", () => connect_to_network());
-  // Keep asking for state updates. The cutoff on the chip side is 50ms, so
-  // if we ask every 80ms we should always recive updates.
-  setInterval(register_state_updates, 80);
+// Time (seconds) after the last update when we attempt reconnecting.
+const no_update_timeout = 0.500;
+// Time (seconds) to allow for the first update to get to us before attempting a reconnect.
+const first_update_allowance = 2.0;
 
-  state_animation_id = requestAnimationFrame(show_state);
-};
 
-socket.onclose = function (event) {
-  d3.select("#status").text("disconnected");
+// Check whether we're actively receiving updates.
+function connection_problem(){
+  let duration_since_connecting = (Date.now() - state.last_connect_local_time) * 0.001;
 
-  cancelAnimationFrame(state_animation_id);
+  // Reconnect if last update was too long ago. Force socket to close, which will cause a reconnect.
+  if (state.duration_since_last_update > no_update_timeout) {
+    // Allow some time for the first update to come.
+    if (duration_since_connecting > first_update_allowance) return true;
+  }
+
+  // We're receving states or just connected, so no problem.
+  return false;
 }
 
-socket.onmessage = async function (event) {
-  let buffer;
-  if (event.data instanceof Blob) {
-    buffer = await event.data.arrayBuffer();
-  } else if (event.data instanceof ArrayBuffer) {
-    buffer = event.data;
-  } else {
-    console.error("Received data is not binary!");
-    return;
-  }
+function connect(){
+  let new_socket = new WebSocket(url);
 
-  // All messages beging with a code byte followed by data.
-  let code = new DataView(buffer, 0, 1).getUint8(0);
-  let data = new DataView(buffer, 1);
+  d3.select("#status").text("connecting...");
 
-  switch (code) {
-    case AVAILABLE_NETOWRKS:
-      receive_networks(data);
+  new_socket.onopen = function (event) {
+    // Store time when we openend connection.
+    state.last_connect_local_time = Date.now();
+
+    // Update global socket with the newly opened one.
+    socket = new_socket;
+
+    d3.select("#status").text("connected");
+
+    scan_networks();
+
+  };
+
+  new_socket.onclose = function (event) {
+    // Disable global socket.
+    socket = null;
+
+    d3.select("#status").text("disconnected");
+
+    // Immediately attempt to reconnect on the next event loop.
+    setTimeout(connect, 0);
+  };
+
+  new_socket.onerror = function (err) {
+    console.error(`Socket error: ${err}`);
+    new_socket.close();
+  };
+
+  new_socket.onmessage = async function (event) {
+    let buffer;
+    if (event.data instanceof Blob) {
+      buffer = await event.data.arrayBuffer();
+    } else if (event.data instanceof ArrayBuffer) {
+      buffer = event.data;
+    } else {
+      console.error("Received data is not binary!");
       return;
-    case STATE:
-      receive_state(data);
-      return;
-    default:
-      console.warn(`Unknown code: ${code}`);
-      return;
-  }
-};
+    }
+
+    // All messages beging with a code byte followed by data.
+    let code = new DataView(buffer, 0, 1).getUint8(0);
+    let data = new DataView(buffer, 1);
+
+    switch (code) {
+      case AVAILABLE_NETOWRKS:
+        receive_networks(data);
+        return;
+      case STATE:
+        receive_state(data);
+        return;
+      default:
+        console.warn(`Unknown code: ${code}`);
+        return;
+    }
+  };
+}
+
+connect();
+
+// Update state and check if we need to reconnect.
+function update(){
+  update_state();
+  requestAnimationFrame(show_state);
+
+  // Force disconnect; which will trigger a reconnect.
+  if (connection_problem()) close();
+}
+
+// Keep asking for state updates. The cutoff on the chip side is 200ms, so
+// if we ask every 80ms we should always recive updates. The `send` function
+// guards against sending to an uninitialzed/unconnected socket.
+setInterval(register_state_updates, 100);
+
+// Run state updates at 200fps, drawing only happens through requestAnimationFrame.
+setInterval(update, 5);

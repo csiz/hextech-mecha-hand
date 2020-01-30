@@ -94,7 +94,7 @@ namespace web {
   const IPAddress default_ip = {};
   IPAddress last_command_ip = {};
   unsigned long last_command_time = 0;
-  // Reserve control for 1 client for 100ms.
+  // Reserve control for 1 client for 200ms.
   const unsigned long max_command_time = 200;
 
   // Use bit banging utils.
