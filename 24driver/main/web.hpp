@@ -81,11 +81,11 @@ namespace web {
   // We'll schedule scans on the update loop, and reply to all clients in queue.
   typedef uint32_t ws_client_id;
   QueueHandle_t clients_waiting_networks = {};
-  // Don't update faster than 50ms.
-  const unsigned long min_web_update_period = 50;
+  // Don't update faster than 100ms.
+  const unsigned long min_web_update_period = 100;
   // To get the state, a client should register for it every 100 ms. It then gets
-  // state updates every 20ms, without having to request it everytime.
-  const unsigned long register_duration = 100;
+  // state updates as fast as the web server updates, without requesting each of them.
+  const unsigned long register_duration = 200;
   QueueHandle_t clients_waiting_state = {};
   std::unordered_map<ws_client_id, unsigned long> state_register_time;
 
@@ -99,6 +99,19 @@ namespace web {
 
   // Use bit banging utils.
   using namespace byte_encoding;
+
+  // Send data or ditch client if queue is full. Fail fast, eh!
+  inline void send_binary(uint32_t id, const char * message, size_t len){
+    auto client = ws.client(id);
+    // Send message if we can.
+    if (client->canSend()) client->binary(message, len);
+    // Otherwise ditch connection and await reconnect.
+    else client->close();
+  }
+
+  inline void send_binary(uint32_t id, uint8_t * message, size_t len) {
+    send_binary(id, reinterpret_cast<const char *>(message), len);
+  }
 
 
   void update_commands(){
@@ -116,7 +129,11 @@ namespace web {
   // Handle websocket events.
   void on_ws_event(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t * data, size_t len) {
     switch(type){
-      case WS_EVT_CONNECT: return;
+      case WS_EVT_CONNECT: {
+        // Auto ping every second.
+        client->keepAlivePeriod(1);
+        return;
+      }
       case WS_EVT_DISCONNECT: return;
       case WS_EVT_PONG: return;
       case WS_EVT_ERROR: return;
@@ -298,7 +315,7 @@ namespace web {
     // Send the network information to all waiting clients.
     ws_client_id id = 0;
     while(xQueueReceive(clients_waiting_networks, &id, 0)) {
-      ws.binary(id, networks.c_str(), networks.length());
+      send_binary(id, networks.c_str(), networks.length());
     }
 
     // Remove scan information now that we sent it over.
@@ -360,7 +377,7 @@ namespace web {
 
     // Send to all registered clients.
     for (auto const& client_and_time : state_register_time) {
-      ws.binary(client_and_time.first, state_msg, state_size);
+      send_binary(client_and_time.first, state_msg, state_size);
     }
   }
 
