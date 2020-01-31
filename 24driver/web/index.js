@@ -173,16 +173,13 @@ let state = {
   durations_to_now: [],
 
   // A 24 length array of drive channel measurements and power setting.
-  channels: d3.range(24).map((i) => ({position: [], current: [], power: [], seek: []})),
-  // A 12 length array of pressure measurements.
-  pressures: d3.range(12).map((i) => ({strain: []})),
+  channels: d3.range(24).map((i) => ({
+    position: [],
+    current: [],
+    power: [],
+    seek: [],
 
-
-  // Flag whether configuration was received. We shouldn't save it until we get starting values.
-  initial_configuration_received: false,
-
-  // Per channel configuration.
-  channel_params: d3.range(24).map((i) => ({
+    // And configuration.
     min_position: 0.0,
     max_position: 1.0,
     reverse_output: false,
@@ -194,12 +191,18 @@ let state = {
     auto_max_position: null,
   })),
 
-  // Per strain gauge config.
-  pressure_params: d3.range(12).map((i) => ({
+  // A 12 length array of pressure measurements.
+  pressures: d3.range(12).map((i) => ({
+    strain: [],
+
+    // And configuration.
     zero_offset: 0.0,
     coefficient: 1.0,
   })),
 
+
+  // Flag whether configuration was received. We shouldn't save it until we get starting values.
+  initial_configuration_received: false,
 };
 
 
@@ -318,10 +321,10 @@ function receive_state(data){
 
   // Update auto limits if enabled.
   for (let i = 0; i < 24; i++) {
-    let params = state.channel_params[i];
-    if (params.auto_limits) {
-      params.auto_min_position = Math.min(params.auto_min_position, last(state.channels[i].position));
-      params.auto_max_position = Math.max(params.auto_max_position, last(state.channels[i].position));
+    let channel = state.channels[i];
+    if (channel.auto_limits) {
+      channel.auto_min_position = Math.min(channel.auto_min_position, last(channel.position));
+      channel.auto_max_position = Math.max(channel.auto_max_position, last(channel.position));
     }
   }
 
@@ -346,7 +349,7 @@ function receive_config(data){
 
   let offset = 0;
 
-  let channels = state.channel_params;
+  let channels = state.channels;
   for (let i = 0; i < 24; i++) {
     channels[i].min_position = data.getFloat32(offset + 0);
     channels[i].max_position = data.getFloat32(offset + 4);
@@ -355,7 +358,7 @@ function receive_config(data){
     offset += 10;
   }
 
-  let pressures = state.pressure_params;
+  let pressures = state.pressures;
   for (let i = 0; i < 12; i++) {
     pressures[i].zero_offset = data.getFloat32(offset + 0);
     pressures[i].coefficient = data.getFloat32(offset + 4)
@@ -421,13 +424,13 @@ function show_state(){
       div.select("path.current").attr("d", current_line(channel.current));
 
       // If we're tracking position limits, then take over the limit lines.
-      if (state.channel_params[i].auto_limits) {
+      if (channel.auto_limits) {
         div.select("line.min-position")
-          .attr("y1", position_seek_scale(state.channel_params[i].auto_min_position))
-          .attr("y2", position_seek_scale(state.channel_params[i].auto_min_position));
+          .attr("y1", position_seek_scale(channel.auto_min_position))
+          .attr("y2", position_seek_scale(channel.auto_min_position));
         div.select("line.max-position")
-          .attr("y1", position_seek_scale(state.channel_params[i].auto_max_position))
-          .attr("y2", position_seek_scale(state.channel_params[i].auto_max_position));
+          .attr("y1", position_seek_scale(channel.auto_max_position))
+          .attr("y2", position_seek_scale(channel.auto_max_position));
       }
 
     });
@@ -435,7 +438,7 @@ function show_state(){
 
 function show_config(){
   d3.selectAll("#drivers>div")
-    .data(state.channel_params)
+    .data(state.channels)
     .each(function (channel, i) {
       let div = d3.select(this);
 
@@ -487,8 +490,8 @@ function send_commands() {
 
     if (seek_active[i]) {
       // Send interpolated seek position if active.
-      let params = state.channel_params[i];
-      set_seek.push(interpolate(seek_position, params.min_position, params.max_position));
+      let channel = state.channels[i];
+      set_seek.push(interpolate(seek_position, channel.min_position, channel.max_position));
     } else {
       // Send -1 if not actively seeking.
       set_seek.push(-1.0);
@@ -523,21 +526,21 @@ function send_config(save = false){
   // Get the limits from the input fields.
   d3.selectAll("#drivers input.set-min-position")
     .each(function(_channel, i) {
-      state.channel_params[i].min_position = this.value;
+      state.channels[i].min_position = this.value;
     });
   d3.selectAll("#drivers input.set-max-position")
     .each(function(_channel, i) {
-      state.channel_params[i].max_position = this.value;
+      state.channels[i].max_position = this.value;
     });
 
   // Get channel reversals (whether the cables are connected the other way around).
   d3.selectAll("#drivers input.set-reverse-input")
     .each(function(_channel, i) {
-      state.channel_params[i].reverse_input = this.checked;
+      state.channels[i].reverse_input = this.checked;
     });
   d3.selectAll("#drivers input.set-reverse-output")
     .each(function(_channel, i) {
-      state.channel_params[i].reverse_output = this.checked;
+      state.channels[i].reverse_output = this.checked;
     });
 
   // TODO: configure strain gauges too.
@@ -555,7 +558,7 @@ function send_config(save = false){
   offset += 1;
 
   // Set channel configuration.
-  let channels = state.channel_params;
+  let channels = state.channels;
   for (let i = 0; i < 24; i++){
     data_view.setFloat32(offset + 0, channels[i].min_position);
     data_view.setFloat32(offset + 4, channels[i].max_position);
@@ -564,7 +567,7 @@ function send_config(save = false){
     offset += 10;
   }
   // Set strain gauge configuration.
-  let pressures = state.pressure_params;
+  let pressures = state.pressures;
   for (let i = 0; i < 12; i++) {
     data_view.setFloat32(offset + 0, pressures[i].zero_offset);
     data_view.setFloat32(offset + 4, pressures[i].coefficient);
@@ -620,14 +623,14 @@ function start_auto_limits (_channel, i) {
   d3.select(`#set-auto-limits-${i}`).property("disabled", false);
   d3.select(`#reset-auto-limits-${i}`).property("disabled", false);
 
-  state.channel_params[i].auto_limits = true;
-  state.channel_params[i].auto_min_position = last(state.channels[i].position);
-  state.channel_params[i].auto_max_position = last(state.channels[i].position);
+  state.channels[i].auto_limits = true;
+  state.channels[i].auto_min_position = last(state.channels[i].position);
+  state.channels[i].auto_max_position = last(state.channels[i].position);
 }
 
 function save_auto_limits (_channel, i) {
-  d3.select(`#set-min-position-${i}`).property("value", state.channel_params[i].auto_min_position.toFixed(2));
-  d3.select(`#set-max-position-${i}`).property("value", state.channel_params[i].auto_max_position.toFixed(2));
+  d3.select(`#set-min-position-${i}`).property("value", state.channels[i].auto_min_position.toFixed(2));
+  d3.select(`#set-max-position-${i}`).property("value", state.channels[i].auto_max_position.toFixed(2));
 
   send_config();
 
@@ -639,9 +642,9 @@ function stop_auto_limits (_channel, i) {
   d3.select(`#set-auto-limits-${i}`).property("disabled", true);
   d3.select(`#reset-auto-limits-${i}`).property("disabled", true);
 
-  state.channel_params[i].auto_limits = false;
-  state.channel_params[i].auto_min_position = null;
-  state.channel_params[i].auto_max_position = null;
+  state.channels[i].auto_limits = false;
+  state.channels[i].auto_min_position = null;
+  state.channels[i].auto_max_position = null;
 
   requestAnimationFrame(show_config);
 }
