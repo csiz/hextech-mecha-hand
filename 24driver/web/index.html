@@ -4,11 +4,23 @@
 
 <div>
   <h2 style="display: inline-block;">24 Drive</h2>&nbsp;<span id=status></span>
+  <p>Dashboard for the 24 channel motor driver. PID control 24 DC-motor & potentiometer drive units, and sense with 12 strain gauges.</p>
 </div>
 
 <h3>Drivers</h3>
+<p style="max-width: 800px;">
+  Manually power the motors by holding down the power sliders (they reset to 0 when let
+  go). Or seek position via PID control. The graphs show 5 seconds of data as seen by the
+  drive chip. <span style="color: royalblue">Position</span> and <span style="color: deepskyblue">
+  seek</span> are shown in the top graph, along with <span style="color: deepskyblue">min
+  and max limits</span> dash lines. The bottom graph shows drive <span style="color: darkorchid">power</span>
+  (which linearly combines manual power and PID control), and motor <span style="color: orangered">
+  current</span>; with dashed lines representing the 0 axis.
+</p>
+
 <div id="drivers" style="display: flex; flex-wrap: wrap;"></div>
 <div id="gauges"></div>
+<div id="config"></div>
 
 
 <h3>WiFi Config</h3>

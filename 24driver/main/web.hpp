@@ -4,6 +4,7 @@
 #include "byte_encoding.hpp"
 #include "memory.hpp"
 #include "state.hpp"
+#include "pid.hpp"
 
 
 #include "freertos/queue.h"
@@ -14,6 +15,8 @@
 
 #include <string.h>
 #include <unordered_map>
+#include <cassert>
+
 
 namespace web {
   // AsyncWebServer Bug
@@ -44,12 +47,14 @@ namespace web {
 
     STATE = 0x00, // State measurements and power.
     COMMAND = 0x01, // Command to position, or drive power.
-    CONFIGURATION = 0x02, // Get configuration (max limits, direction, PID params).
+    CONFIGURATION = 0x02, // Configuration (max limits, direction, PID params).
     CONFIGURE = 0x03, // Set configuration.
     SCAN_NETWORKS = 0x04, // Scan for wifi networks in range.
     AVAILABLE_NETOWRKS = 0x05, // Reply with networks in range.
     CONNECT_NETWORK = 0x06, // Connect to network or start access point.
-    REGISTER_STATE_UPDATES = 0x07, // Register for state updates.
+    REQUEST_STATE_UPDATES = 0x07, // Register for state updates.
+    REQUEST_CONFIGURATION = 0x08, // Ask for configuration.
+    RELOAD_CONFIGURATION = 0x09, // Reload and ask for configuration.
   };
 
   const size_t max_length = 256;
@@ -66,9 +71,16 @@ namespace web {
   // Whether new connection needs to be established, and new settings saved.
   bool new_settings = false;
 
+  // Whether we need to save/reload state config.
+  bool save_config = false;
+  bool reload_config = false;
+
 
   // Server port to use, 80 for HTTP/WS or 443 for HTTPS/WSS.
   const int PORT = 80;
+
+  // Don't update faster than 100ms.
+  const unsigned long min_web_update_period = 100;
 
   // IP address to get to the server.
   IPAddress ip = {};
@@ -87,17 +99,20 @@ namespace web {
   AsyncWebServer server(PORT);
   AsyncWebSocket ws("/ws");
 
+  typedef uint32_t ws_client_id;
+
   // Replying with available networks takes a lot of time to finish scanning.
   // We'll schedule scans on the update loop, and reply to all clients in queue.
-  typedef uint32_t ws_client_id;
   QueueHandle_t clients_waiting_networks = {};
-  // Don't update faster than 100ms.
-  const unsigned long min_web_update_period = 100;
+
   // To get the state, a client should register for it every 100 ms. It then gets
   // state updates as fast as the web server updates, without requesting each of them.
   const unsigned long register_duration = 200;
   QueueHandle_t clients_waiting_state = {};
   std::unordered_map<ws_client_id, unsigned long> state_register_time;
+
+  // Reply to clients requesting config from the main loop.
+  QueueHandle_t clients_waiting_config = {};
 
 
   // Commands are sent by clients, they may overlap, allow only 1 to have control.
@@ -207,7 +222,7 @@ namespace web {
             return;
           }
 
-          case REGISTER_STATE_UPDATES: {
+          case REQUEST_STATE_UPDATES: {
             if (clients_waiting_state) {
               const ws_client_id id = client->id();
               xQueueSend(clients_waiting_state, &id, 0);
@@ -216,7 +231,7 @@ namespace web {
           }
 
           case COMMAND: {
-          // Command is power and seek for all 24 channels. Use 0.0 for no power and -1.0 for no seeking.
+            // Command is power and seek for all 24 channels. Use 0.0 for no power and -1.0 for no seeking.
             if (len != offset + 8*24) return;
 
             // Check that current command is not blocked by another client.
@@ -232,14 +247,66 @@ namespace web {
 
             // All good, set power levels.
             for (size_t i = 0; i < 24; i++) {
-              state.channels[i].power_offset = get_float32(data + offset);
-              state.channels[i].seek = get_float32(data + offset + 4);
+              auto & channel = state.channels[i];
+              using mystd::clamp;
+
+              // Clamp power to valid range.
+              channel.power_offset = clamp(get_float32(data + offset), -1.0, +1.0);
+
+              // Clamp seek to valid range, with special case for -1 meaning no seek.
+              const float seek = get_float32(data + offset + 4);
+              if (seek == -1.0) channel.seek = -1.0;
+              else channel.seek = clamp(seek, channel.min_position, channel.max_position);
+
               offset += 8;
             }
 
             last_command_ip = ip;
             last_command_time = command_time;
 
+            return;
+          }
+
+          case CONFIGURE: {
+            // Similarly to sending configuration, with 1 extra byte to tell if we should save it.
+            if (len != 338) return;
+
+            const bool save = get_bool(data + offset);
+            offset += 1;
+
+            using state::state;
+
+            // Get channel config.
+            for (size_t i = 0; i < 24; i++){
+              state.channels[i].min_position = get_float32(data + offset + 0);
+              state.channels[i].max_position = get_float32(data + offset + 4);
+              state.channels[i].reverse_output = get_bool(data + offset + 8);
+              state.channels[i].reverse_input = get_bool(data + offset + 9);
+              offset += 10;
+            }
+
+            // Get strain gauge coefficients.
+            for (size_t i = 0; i < 12; i++){
+              state.gauges[i].zero_offset = get_float32(data + offset + 0);
+              state.gauges[i].coefficient = get_float32(data + offset + 4);
+              offset += 8;
+            }
+
+            // Memory saving uses a mutex and is slow, do it in the main loop.
+            if (save) save_config = true;
+
+            return;
+          }
+
+          case RELOAD_CONFIGURATION:
+            reload_config = true;
+            // Fallthrough to also ask for new config.
+
+          case REQUEST_CONFIGURATION: {
+            if (clients_waiting_config) {
+              const ws_client_id id = client->id();
+              xQueueSend(clients_waiting_config, &id, 0);
+            }
             return;
           }
 
@@ -389,6 +456,51 @@ namespace web {
     }
   }
 
+  void send_configuration(){
+    // Nothing waiting, nothing to do.
+    if (not clients_waiting_config) return;
+    if (not uxQueueMessagesWaiting(clients_waiting_config)) return;
+
+
+    // Serialise Config
+    // ----------------
+
+    // Build state message.
+    const size_t config_size = 337;
+    uint8_t config_msg[config_size] = {};
+
+    using state::state;
+
+    // State message API code.
+    config_msg[0] = CONFIGURATION;
+    size_t offset = 1;
+
+    // Send config of each drive channel.
+    for (size_t i = 0; i < 24; i++){
+      set_float32(config_msg + offset + 0, state.channels[i].min_position);
+      set_float32(config_msg + offset + 4, state.channels[i].max_position);
+      set_bool(config_msg + offset + 8, state.channels[i].reverse_output);
+      set_bool(config_msg + offset + 9, state.channels[i].reverse_input);
+      offset += 10;
+    }
+    // Send strain gauge coefficients.
+    for (size_t i = 0; i < 12; i++){
+      set_float32(config_msg + offset + 0, state.gauges[i].zero_offset);
+      set_float32(config_msg + offset + 4, state.gauges[i].coefficient);
+      offset += 8;
+    }
+
+    // Make sure we filled the buffer exactly.
+    assert(offset == config_size);
+
+    // Send to all registered clients.
+    ws_client_id id = 0;
+    while(xQueueReceive(clients_waiting_config, &id, 0)) {
+      send_binary(id, config_msg, config_size);
+    }
+  }
+
+
 
 
   void save_wifi_settings() {
@@ -450,6 +562,8 @@ namespace web {
     clients_waiting_networks = xQueueCreate(10, sizeof(ws_client_id));
     // Queue for waiting state.
     clients_waiting_state = xQueueCreate(10, sizeof(ws_client_id));
+    // Queue for config.
+    clients_waiting_config = xQueueCreate(10, sizeof(ws_client_id));
     // Add handler and initialize websocket at path `/ws`.
     ws.onEvent(on_ws_event);
     server.addHandler(&ws);
@@ -522,6 +636,21 @@ namespace web {
 
     // Reset commands if no client is holding control.
     update_commands();
+
+
+    // Reload configuration if needed.
+    if (reload_config) {
+      state::load_state_params();
+      reload_config = false;
+      save_config = false;
+    }
+    // Send configuration info.
+    send_configuration();
+    // Save configuration if needed.
+    if (save_config) {
+      state::save_state_params();
+      save_config = false;
+    }
   }
 
   // Function to run in the core dedicated to the web server.

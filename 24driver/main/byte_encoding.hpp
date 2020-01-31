@@ -6,6 +6,7 @@ namespace byte_encoding {
   typedef float  float32_t;
   typedef double float64_t;
 
+
   inline void set_uint32(uint8_t * data, uint32_t value) {
     data[0] = (value >> 24) & 0xFF;
     data[1] = (value >> 16) & 0xFF;
@@ -35,4 +36,12 @@ namespace byte_encoding {
     set_uint32(data, reinterpret_cast<uint32_t &>(value));
   }
 
+
+  inline void set_bool(uint8_t * data, bool value) {
+    data[0] = value;
+  }
+
+  inline bool get_bool(uint8_t * data) {
+    return reinterpret_cast<bool &>(data[0]);
+  }
 }

@@ -14,7 +14,9 @@ const CONFIGURE = 0x03; // Set configuration.
 const SCAN_NETWORKS = 0x04; // Scan for wifi networks in range.
 const AVAILABLE_NETOWRKS = 0x05; // Reply with networks in range.
 const CONNECT_NETWORK = 0x06; // Connect to network or start access point.
-const REGISTER_STATE_UPDATES = 0x07; // Register for state updates.
+const REQUEST_STATE_UPDATES = 0x07; // Register for state updates.
+const REQUEST_CONFIGURATION = 0x08; // Ask for configuration.
+const RELOAD_CONFIGURATION = 0x09; // Reload and ask for configuration.
 
 // Websocket url.
 const url = "ws://" + location.host + "/ws";
@@ -40,9 +42,9 @@ function scan_networks() {
   send(data.buffer);
 }
 
-function register_state_updates(){
+function request_state_updates(){
   let data = new Uint8Array(1);
-  data[0] = REGISTER_STATE_UPDATES;
+  data[0] = REQUEST_STATE_UPDATES;
   send(data.buffer);
 }
 
@@ -173,10 +175,32 @@ let state = {
   // A 24 length array of drive channel measurements and power setting.
   channels: d3.range(24).map((i) => ({position: [], current: [], power: [], seek: []})),
   // A 12 length array of pressure measurements.
-  pressures: d3.range(12).map((i) => ({strain: []}))
+  pressures: d3.range(12).map((i) => ({strain: []})),
+
+
+  // Flag whether configuration was received. We shouldn't save it until we get starting values.
+  initial_configuration_received: false,
+
+  // Per channel configuration.
+  channel_params: d3.range(24).map((i) => ({
+    min_position: 0.0,
+    max_position: 1.0,
+    reverse_output: false,
+    reverse_input: false,
+
+    // Auto limits scan for the minimum position and maximum position and sets the config.
+    auto_limits: false,
+    auto_min_position: null,
+    auto_max_position: null,
+  })),
+
+  // Per strain gauge config.
+  pressure_params: d3.range(12).map((i) => ({
+    zero_offset: 0.0,
+    coefficient: 1.0,
+  })),
+
 };
-
-
 
 
 function update_state() {
@@ -221,6 +245,10 @@ function clamp(num, min, max) {
 
 function exp_average(value, last_value, gamma){
   return value * gamma + last_value * (1-gamma);
+}
+
+function last(array) {
+  return array[array.length - 1];
 }
 
 function receive_state(data){
@@ -288,18 +316,67 @@ function receive_state(data){
     offset += 4;
   }
 
+  // Update auto limits if enabled.
+  for (let i = 0; i < 24; i++) {
+    let params = state.channel_params[i];
+    if (params.auto_limits) {
+      params.auto_min_position = Math.min(params.auto_min_position, last(state.channels[i].position));
+      params.auto_max_position = Math.max(params.auto_max_position, last(state.channels[i].position));
+    }
+  }
+
   update_state();
 }
 
+function request_config(){
+  let data = new Uint8Array(1);
+  data[0] = REQUEST_CONFIGURATION;
+  send(data.buffer);
+}
 
-const width = 200;
-const height = 50;
+function reload_config() {
+  let data = new Uint8Array(1);
+  data[0] = RELOAD_CONFIGURATION;
+  send(data.buffer);
+}
+
+function receive_config(data){
+  // Ignore if we didn't get the complete message.
+  if (data.byteLength != 337 - 1) return;
+
+  let offset = 0;
+
+  let channels = state.channel_params;
+  for (let i = 0; i < 24; i++) {
+    channels[i].min_position = data.getFloat32(offset + 0);
+    channels[i].max_position = data.getFloat32(offset + 4);
+    channels[i].reverse_output = Boolean(data.getUint8(offset + 8));
+    channels[i].reverse_input = Boolean(data.getUint8(offset + 9));
+    offset += 10;
+  }
+
+  let pressures = state.pressure_params;
+  for (let i = 0; i < 12; i++) {
+    pressures[i].zero_offset = data.getFloat32(offset + 0);
+    pressures[i].coefficient = data.getFloat32(offset + 4)
+    offset += 8;
+  }
+
+  state.initial_configuration_received = true;
+  d3.select("#save-config").property("disabled", false);
+
+  requestAnimationFrame(show_config);
+}
+
+
+const width = 300;
+const height = 80;
 // Hide latest few ms of state updates to avoid flickering.
 const time_scale = d3.scaleLinear([max_duration, min_duration], [0.0, width]);
-const position_seek_scale = d3.scaleLinear([0.0, 1.0], [height, 0.0]);
-const power_scale = d3.scaleLinear([-1.0, +1.0], [height, 0.0]);
+const position_seek_scale = d3.scaleLinear([0.0, 1.0], [height-1, 1]);
+const power_scale = d3.scaleLinear([-1.0, +1.0], [height-1, 1]);
 // Current is in Ampere, but usually it's very low. This might overflow.
-const current_scale = d3.scaleLinear([0.0, 0.5], [height, 0.0]);
+const current_scale = d3.scaleLinear([0.0, 0.5], [height-1, 1]);
 
 // Use the last update time as long as we're getting updates consistently.
 function duration_at_index(i) {
@@ -331,7 +408,6 @@ let current_line = d3.line()
   .y(c => current_scale(c));
 
 
-
 function show_state(){
   // TODO: show power and timing info
   d3.selectAll("#drivers>div")
@@ -343,10 +419,48 @@ function show_state(){
       div.select("path.seek").attr("d", seek_line(channel.seek));
       div.select("path.power").attr("d", power_line(channel.power));
       div.select("path.current").attr("d", current_line(channel.current));
+
+      // If we're tracking position limits, then take over the limit lines.
+      if (state.channel_params[i].auto_limits) {
+        div.select("line.min-position")
+          .attr("y1", position_seek_scale(state.channel_params[i].auto_min_position))
+          .attr("y2", position_seek_scale(state.channel_params[i].auto_min_position));
+        div.select("line.max-position")
+          .attr("y1", position_seek_scale(state.channel_params[i].auto_max_position))
+          .attr("y2", position_seek_scale(state.channel_params[i].auto_max_position));
+      }
+
+    });
+}
+
+function show_config(){
+  d3.selectAll("#drivers>div")
+    .data(state.channel_params)
+    .each(function (channel, i) {
+      let div = d3.select(this);
+
+      div.select("input.set-min-position").property("value", channel.min_position.toFixed(2));
+      div.select("input.set-max-position").property("value", channel.max_position.toFixed(2));
+
+      div.select("line.min-position")
+        .attr("y1", position_seek_scale(channel.min_position))
+        .attr("y2", position_seek_scale(channel.min_position));
+      div.select("line.max-position")
+        .attr("y1", position_seek_scale(channel.max_position))
+        .attr("y2", position_seek_scale(channel.max_position));
+
+      div.select("input.set-reverse-input")
+        .property("checked", channel.reverse_input);
+      div.select("input.set-reverse-output")
+        .property("checked", channel.reverse_output);
     });
 }
 
 let commands_handle = null;
+
+function interpolate(f, min, max){
+  return f * max + (1 - f) * min;
+}
 
 function send_commands() {
 
@@ -370,9 +484,15 @@ function send_commands() {
   .each(function(_channel, i) {
     // Get [0.0, 1.0] seek position from the slider.
     let seek_position = this.value * 0.05;
-    // TODO: interpolate between channel min pos and channel max pos.
-    // Send -1 if not actively seeking.
-    set_seek.push(seek_active[i] ? seek_position : -1.0);
+
+    if (seek_active[i]) {
+      // Send interpolated seek position if active.
+      let params = state.channel_params[i];
+      set_seek.push(interpolate(seek_position, params.min_position, params.max_position));
+    } else {
+      // Send -1 if not actively seeking.
+      set_seek.push(-1.0);
+    }
   });
 
   // Build response and send it via websockets.
@@ -393,6 +513,69 @@ function send_commands() {
 
   // Send payload.
   send(data.buffer);
+}
+
+
+function send_config(save = false){
+  // Don't save if we didn't get the inital config.
+  if (!state.initial_configuration_received) save = false;
+
+  // Get the limits from the input fields.
+  d3.selectAll("#drivers input.set-min-position")
+    .each(function(_channel, i) {
+      state.channel_params[i].min_position = this.value;
+    });
+  d3.selectAll("#drivers input.set-max-position")
+    .each(function(_channel, i) {
+      state.channel_params[i].max_position = this.value;
+    });
+
+  // Get channel reversals (whether the cables are connected the other way around).
+  d3.selectAll("#drivers input.set-reverse-input")
+    .each(function(_channel, i) {
+      state.channel_params[i].reverse_input = this.checked;
+    });
+  d3.selectAll("#drivers input.set-reverse-output")
+    .each(function(_channel, i) {
+      state.channel_params[i].reverse_output = this.checked;
+    });
+
+  // TODO: configure strain gauges too.
+
+  // Build response and send it via websockets.
+  let data = new Uint8Array(338);
+  let data_view = new DataView(data.buffer);
+
+  // Set the function code.
+  data[0] = CONFIGURE;
+  let offset = 1;
+
+  // Set save flag.
+  data_view.setUint8(offset, save);
+  offset += 1;
+
+  // Set channel configuration.
+  let channels = state.channel_params;
+  for (let i = 0; i < 24; i++){
+    data_view.setFloat32(offset + 0, channels[i].min_position);
+    data_view.setFloat32(offset + 4, channels[i].max_position);
+    data_view.setUint8(offset + 8, channels[i].reverse_output);
+    data_view.setUint8(offset + 9, channels[i].reverse_input);
+    offset += 10;
+  }
+  // Set strain gauge configuration.
+  let pressures = state.pressure_params;
+  for (let i = 0; i < 12; i++) {
+    data_view.setFloat32(offset + 0, pressures[i].zero_offset);
+    data_view.setFloat32(offset + 4, pressures[i].coefficient);
+    offset += 8;
+  }
+
+  // Send payload.
+  send(data.buffer);
+
+  // Request updated config.
+  request_config();
 }
 
 function start_command_sliders() {
@@ -429,6 +612,40 @@ function reset_command_sliders_if_not_seeking(){
   if (seek_active.every(active => !active)) reset_command_sliders();
 }
 
+function start_auto_limits (_channel, i) {
+  // Don't start if we're not receing position data.
+  if (state.channels[i].position.length == 0) return;
+
+  d3.select(`#auto-limits-${i}`).property("disabled", true);
+  d3.select(`#set-auto-limits-${i}`).property("disabled", false);
+  d3.select(`#reset-auto-limits-${i}`).property("disabled", false);
+
+  state.channel_params[i].auto_limits = true;
+  state.channel_params[i].auto_min_position = last(state.channels[i].position);
+  state.channel_params[i].auto_max_position = last(state.channels[i].position);
+}
+
+function save_auto_limits (_channel, i) {
+  d3.select(`#set-min-position-${i}`).property("value", state.channel_params[i].auto_min_position.toFixed(2));
+  d3.select(`#set-max-position-${i}`).property("value", state.channel_params[i].auto_max_position.toFixed(2));
+
+  send_config();
+
+  stop_auto_limits(_channel, i);
+}
+
+function stop_auto_limits (_channel, i) {
+  d3.select(`#auto-limits-${i}`).property("disabled", false);
+  d3.select(`#set-auto-limits-${i}`).property("disabled", true);
+  d3.select(`#reset-auto-limits-${i}`).property("disabled", true);
+
+  state.channel_params[i].auto_limits = false;
+  state.channel_params[i].auto_min_position = null;
+  state.channel_params[i].auto_max_position = null;
+
+  requestAnimationFrame(show_config);
+}
+
 function setup_graphs() {
   d3.select("#drivers")
     .selectAll("div")
@@ -438,7 +655,7 @@ function setup_graphs() {
         let div = enter.append("div")
           .style("margin", "5px");
 
-        div.append("p").text((_channel, i) => `Channel ${i}`);
+        div.append("h4").text((_channel, i) => `Channel ${i}`);
 
         let svg_ps = div.append("svg")
           .classed("position-seek", true)
@@ -447,17 +664,15 @@ function setup_graphs() {
           .attr("height", height);
 
         svg_ps.append("line")
+          .classed("min-position", true)
           .attr("x1", "0%")
           .attr("x2", "100%")
-          .attr("y1", position_seek_scale(0.0))
-          .attr("y2", position_seek_scale(0.0))
           .attr("stroke", "aqua")
           .attr("stroke-dasharray", "3,3");
         svg_ps.append("line")
+          .classed("max-position", true)
           .attr("x1", "0%")
           .attr("x2", "100%")
-          .attr("y1", position_seek_scale(1.0))
-          .attr("y2", position_seek_scale(1.0))
           .attr("stroke", "aqua")
           .attr("stroke-dasharray", "3,3");
 
@@ -469,7 +684,7 @@ function setup_graphs() {
         svg_ps.append("path")
           .classed("seek", true)
           .attr("stroke", "deepskyblue")
-          .attr("stroke-dasharray", "5,5")
+          .attr("stroke-dasharray", "1,1")
           .attr("fill", "none");
 
 
@@ -562,13 +777,114 @@ function setup_graphs() {
             d3.select(`#set-seek-active-${i}`).property("checked", true);
             start_command_sliders();
           });
+
+
+        inputs_grid.append("span")
+          .text("Limits:");
+
+        let limits_span = inputs_grid.append("span");
+
+        limits_span.append("input")
+          .classed("set-min-position", true)
+          .attr("id", (_channel, i) => `set-min-position-${i}`)
+          .attr("type", "number")
+          .attr("min", "0")
+          .attr("max", "1")
+          .attr("step", "0.01")
+          .style("width", "4em")
+          .on("change", send_config);
+
+        limits_span.append("span").text(" - ");
+
+        limits_span.append("input")
+          .classed("set-max-position", true)
+          .attr("id", (_channel, i) => `set-max-position-${i}`)
+          .attr("type", "number")
+          .attr("min", "0")
+          .attr("max", "1")
+          .attr("step", "0.01")
+          .style("width", "4em")
+          .on("change", send_config);
+
+
+        inputs_grid.append("button")
+          .classed("auto-limits", true)
+          .attr("id", (_channel, i) => `auto-limits-${i}`)
+          .text("Auto")
+          .on("click", start_auto_limits);
+
+        let auto_limits_span = inputs_grid.append("span");
+
+        auto_limits_span.append("button")
+          .classed("set-auto-limits", true)
+          .attr("id", (_channel, i) => `set-auto-limits-${i}`)
+          .text("Set")
+          .property("disabled", true)
+          .on("click", save_auto_limits);
+
+        auto_limits_span.append("span").text(" - ");
+
+        auto_limits_span.append("button")
+          .classed("reset-auto-limits", true)
+          .attr("id", (_channel, i) => `reset-auto-limits-${i}`)
+          .text("Reset")
+          .property("disabled", true)
+          .on("click", stop_auto_limits);
+
+
+        inputs_grid.append("span")
+          .text("Reverse:");
+
+        let reverse_span = inputs_grid.append("span");
+
+        let reverse_input_label = reverse_span.append("label");
+
+        reverse_input_label.append("input")
+          .classed("set-reverse-input", true)
+          .attr("id", (_channel, i) => `set-reverse-input-${i}`)
+          .attr("type", "checkbox")
+          .on("change", send_config);
+
+        reverse_input_label.append("span")
+          .text("input");
+
+        reverse_span.append("span").text(" - ");
+
+        let reverse_output_label = reverse_span.append("label");
+
+        reverse_output_label.append("input")
+          .classed("set-reverse-output", true)
+          .attr("id", (_channel, i) => `set-reverse-output-${i}`)
+          .attr("type", "checkbox")
+          .on("change", send_config);
+
+        reverse_output_label.append("span")
+          .text("output");
       }
     );
+
+
+    let config_buttons_div = d3.select("#config");
+    config_buttons_div.append("button")
+      .attr("id", "save-config")
+      .text("Save Configuration")
+      .on("click", () => {send_config(true)})
+      .property("disabled", true);
+
+      config_buttons_div.append("button")
+      .attr("id", "reload-config")
+      .text("Reload Configuration")
+      .on("click", () => {
+        state.initial_configuration_received = false;
+        d3.select("#save-config").property("disabled", true);
+        reload_config();
+      });
 }
 
 // Setup graphs and show initial state.
 setup_graphs();
 show_state();
+show_config();
 
 
 // Time (seconds) after the last update when we attempt reconnecting.
@@ -606,7 +922,7 @@ function connect(){
     d3.select("#status").text("connected");
 
     scan_networks();
-
+    request_config();
   };
 
   new_socket.onclose = function (event) {
@@ -646,6 +962,9 @@ function connect(){
       case STATE:
         receive_state(data);
         return;
+      case CONFIGURATION:
+        receive_config(data);
+        return;
       default:
         console.warn(`Unknown code: ${code}`);
         return;
@@ -666,7 +985,7 @@ function update(){
 // Keep asking for state updates. The cutoff on the chip side is 200ms, so
 // if we ask every 80ms we should always recive updates. The `send` function
 // guards against sending to an uninitialzed/unconnected socket.
-setInterval(register_state_updates, 100);
+setInterval(request_state_updates, 100);
 
 // Run state updates at 200fps, drawing only happens through requestAnimationFrame.
 setInterval(update, 5);
