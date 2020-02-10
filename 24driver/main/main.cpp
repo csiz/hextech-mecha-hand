@@ -138,7 +138,7 @@ void loop(){
       // Clamp position seeking to maximum values we can reach; as calibrated by user.
       const float seek = clamp(channel.seek, channel.min_position, channel.max_position);
       // Add to base power; note that base power would usually be 0.
-      power += channel.pid.update(seek, channel.position, elapsed);
+      power += channel.pid.update(channel.position, seek, elapsed);
     }
 
     // Clamp to output range.
