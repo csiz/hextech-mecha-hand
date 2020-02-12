@@ -1,7 +1,7 @@
 FIXME PCB
 ---------
 
-[ ] Fix dimensions of the joystick outline/components (it's too large)...
+[x] Fix dimensions of the joystick outline/components (it's too large)... Just ditch joystick.
 [ ] Remove the low-pass capacitors for the motors. They cause the motor driver to trip on high
 current, turning the outputs to ground, which discharges the cap and the cycle repeats... until
 the driver overheats, duh.
@@ -10,6 +10,7 @@ the driver overheats, duh.
 TODO PCB
 --------
 
+[ ] Ditch joystick and buttons; expose remaining pins.
 [ ] Adjust resistance for the motor LED. Green is stronger than orange, put higher resistance for green.
-[x] Maybe increase resistance for both, to reduce brightness a bit more. Orange seems fine brightness wise.
-[ ] Try to leave ESP32 VIN pin disconnected so we can use USB and battery at the same time.
+[ ] Compactiffy new layout.
+[ ] Try to leave ESP32 VIN pin disconnected so we can use USB (for wired interface) and battery at the same time.

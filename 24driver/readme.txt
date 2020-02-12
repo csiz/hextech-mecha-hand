@@ -1,4 +1,20 @@
-Requires:
+24 Drive
+========
+
+Control 24 DC motors via PID algorithm, with current measurement for each motor, and position feedback from 24 corresponding potentiometers. Additionally connect 12 strain gauges for pressure measurements.
+
+Layout
+------
+
+* main: C++ code for the driver.
+* web: HTML & JS code for the web app.
+* PCB: Circuit board design files.
+* build: Build location, ignored by git.
+* components: Required dependencies, installed as git subcomponents or just copied.
+
+
+Setup
+-----
 
 * [esp-idf-v3.2.3](https://github.com/espressif/esp-idf/releases/tag/v3.2.3) install via the esp tools installer.
 * [arduino-esp32-v1.0.4](https://github.com/espressif/arduino-esp32/releases/tag/1.0.4) install from readme instructions.
