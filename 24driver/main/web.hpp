@@ -128,10 +128,16 @@ namespace web {
   // Send data or ditch client if queue is full. Fail fast, eh!
   inline void send_binary(uint32_t id, const char * message, size_t len){
     auto client = ws.client(id);
+
+    // Skip if client was closed and deleted.
     if (client == nullptr) return;
 
+
+    // Client is open, check if we can send.
+    bool ok = (client->status() == WS_CONNECTED) and client->canSend();
+
     // Send message if we can.
-    if (client->canSend()) client->binary(message, len);
+    if (ok) client->binary(message, len);
     // Otherwise ditch connection and await reconnect.
     else client->close();
   }

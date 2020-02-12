@@ -584,7 +584,7 @@ function send_config(save = false){
 function start_command_sliders() {
   // Skip if command sliders already activated.
   if (commands_handle != null) return;
-  commands_handle = setInterval(send_commands, 50);
+  commands_handle = setInterval(send_commands, 100);
 }
 
 function reset_command_sliders(){
