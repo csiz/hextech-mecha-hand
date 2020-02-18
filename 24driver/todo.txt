@@ -2,7 +2,7 @@ FIXME PCB
 ---------
 
 [x] Fix dimensions of the joystick outline/components (it's too large)... Just ditch joystick.
-[ ] Remove the low-pass capacitors for the motors. They cause the motor driver to trip on high
+[v] Remove the low-pass capacitors for the motors. They cause the motor driver to trip on high
 current, turning the outputs to ground, which discharges the cap and the cycle repeats... until
 the driver overheats, duh.
 
@@ -10,7 +10,14 @@ the driver overheats, duh.
 TODO PCB
 --------
 
-[ ] Ditch joystick and buttons; expose remaining pins.
-[ ] Adjust resistance for the motor LED. Green is stronger than orange, put higher resistance for green.
-[ ] Compactiffy new layout.
-[ ] Try to leave ESP32 VIN pin disconnected so we can use USB (for wired interface) and battery at the same time.
+[v] Ditch joystick and buttons; expose remaining pins.
+[v] Adjust resistance for the motor LED. Green is stronger than orange, put higher resistance for green.
+[x] Try to leave ESP32 VIN pin disconnected so we can use USB (for wired interface) and battery at the same time.
+No need, there is a protective diode from VDDUSB to the VIN pin, there won't any excess voltage on the USB line.
+[v] Why did I want the 15V lower limit? The 5V regulator is goo up to 30 or more, what is the lowest rated thing?
+The regulator on the ESP is actually supplied by the 5V regulator, so no worries there. Fuck knows why I set the
+limit low, maybe I thought the EPS32 VIN pin is directly connected to VCC, which would limit to 15V, but it's not!
+[ ] Compactiffy new layout. Not worth making the drives smaller, just ditch joystick and button space.
+[v] Plate the mounting holes!
+[ ] Apply manufacturing suggestions.
+[ ] Change voltage divider scale to 1kohm - 8.2kohm.

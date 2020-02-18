@@ -6,7 +6,7 @@ PID control for 24 DC motor channels, with position, current, and pressure senso
 Features
 --------
 
-* 24 DC motor drives; PWM control @ 100kHz. With direction LEDs.
+* 24 DC motor drives; PWM control @ 97kHz. With direction LEDs.
 * 24 Potentiometer inputs
 * 24 Motor current inputs, from 0.1ohm shunt sensors.
 * 12 Strain gauge inputs referenced at half VRef.
@@ -16,6 +16,8 @@ Features
 * I2C connections.
 * WiFI.
 * Inertial measurement unit cause it's good to have.
+* Maximum 24V, 10A continuous total, and 2A per channel (internally limited).
+* Minimum 6.5V, with auto turn-off feature for low battery voltage (under 6.7V).
 
 
 Functional Description
@@ -48,6 +50,13 @@ gyro, and PWM controls. Serial interface for position and current measurements.
 
 External interface via WiFi; with a websocket API. Wired interface possible but not yet implemented
 are the second I2C line, and the USB connection.
+
+Main copper power line has width enough to dissipate 10A continuously. And each motor driver has a
+cutoff set to 2A per. The minimum voltage for the motor drivers is 6.5V and the ESP32 can be powered
+at 5V from USB, and 6.1V from the 5V voltage regulator with a 1.1V dropout voltage. The maximum voltage
+for the components on the motor power line are, in descending order, 45V for the motor driver, 35V for
+the voltage regulator, 30V for the power mosfet, and 25V for the power bank capacitors. Thus I set the
+maximum usable voltage at 24V.
 
 
 
