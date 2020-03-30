@@ -87,8 +87,9 @@ namespace power {
     pinMode(POWER_BTN, INPUT_PULLDOWN);
     pinMode(POWER_CTRL, OUTPUT);
 
-    // Turn the power supply mosfet on.
-    digitalWrite(POWER_CTRL, HIGH);
+    // Turn the power supply mosfet on; if the power button is being pressed.
+    if (digitalRead(POWER_BTN) == HIGH) digitalWrite(POWER_CTRL, HIGH);
+    else turnoff();
 
     // Use the power button to shut off if held down.
     attachInterrupt(POWER_BTN, power_button_interrupt, RISING);

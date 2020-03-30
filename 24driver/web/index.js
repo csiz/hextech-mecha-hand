@@ -233,7 +233,7 @@ function update_state() {
     state.channels[j].seek = state.channels[j].seek.slice(stale);
   }
   for (let j = 0; j < 12; j++) {
-    state.pressures[j].strain.slice(stale);
+    state.pressures[j].strain = state.pressures[j].strain.slice(stale);
   }
 }
 
@@ -381,6 +381,10 @@ const power_scale = d3.scaleLinear([-1.0, +1.0], [height-1, 1]);
 // Current is in Ampere, but usually it's very low. This might overflow.
 const current_scale = d3.scaleLinear([0.0, 0.5], [height-1, 1]);
 
+// Strain scale in Volts (TODO change to some force unit maybe Newton, after calibrating).
+const pressure_scale = d3.scaleLinear([-0.01, 0.01], [height-1, 1]);
+
+
 // Use the last update time as long as we're getting updates consistently.
 function duration_at_index(i) {
   // Adjust time to account for spiky network latency.
@@ -410,6 +414,11 @@ let current_line = d3.line()
   .x((_, i) => duration_at_index(i))
   .y(c => current_scale(c));
 
+let pressure_line = d3.line()
+  .x((_, i) => duration_at_index(i))
+  .y(c => pressure_scale(c));
+
+
 
 function show_state(){
   // TODO: show power and timing info
@@ -433,6 +442,14 @@ function show_state(){
           .attr("y2", position_seek_scale(channel.auto_max_position));
       }
 
+    });
+
+  d3.selectAll("#gauges>div")
+    .data(state.pressures)
+    .each(function (pressure, i) {
+      let div = d3.select(this);
+
+      div.select("path.pressure").attr("d", pressure_line(pressure.strain));
     });
 }
 
@@ -863,6 +880,29 @@ function setup_graphs() {
 
         reverse_output_label.append("span")
           .text("output");
+      }
+    );
+
+    d3.select("#gauges")
+    .selectAll("div")
+    .data(state.pressures)
+    .join(
+      enter => {
+        let div = enter.append("div")
+          .style("margin", "5px");
+
+        div.append("h4").text((_channel, i) => `Gauge ${i}`);
+
+        let svg = div.append("svg")
+          .classed("pressure", true)
+          .style("display", "block")
+          .attr("width", width)
+          .attr("height", height);
+
+        svg.append("path")
+          .classed("pressure", true)
+          .attr("stroke", "royalblue")
+          .attr("fill", "none");
       }
     );
 

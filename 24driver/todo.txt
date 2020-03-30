@@ -1,14 +1,31 @@
-FIXME PCB
----------
-
-[x] Fix dimensions of the joystick outline/components (it's too large)... Just ditch joystick.
-[v] Remove the low-pass capacitors for the motors. They cause the motor driver to trip on high
-current, turning the outputs to ground, which discharges the cap and the cycle repeats... until
-the driver overheats, duh.
-
-
 TODO PCB
 --------
+
+[ ] Switch to DC-DC buck converter for efficiency, maybe https://datasheet.lcsc.com/szlcsc/Texas-Instruments-TI-TPS54331DR_C9865.pdf
+[x] 5V output pin to power secondary chip. Check for power use of gpu system on a chip, like NVIDIA Jetson Nano Developer Kit:
+"If you want to run stressful workloads in the (default) 10W power mode,you should instead use a DC barrel jack power supply (with 5.5mm OD / 2.1mm ID / 9.5mm length, center pin positive) that can supply up to 5V⎓4A."
+[x] Seems hard to find a 4A buck converter, and they'd end up pretty big to supply enough power. This means super chip needs to manage
+input power rails, so we need to ...
+[ ] Expose the power-on pin, after the button & resistance, as input from other device.
+[ ] Just power on from USB, then chip can try to switch to Serial interface, if device on other end ack.
+[ ] Replace 5V with 3V3 analog reference for: position sensors, position sensor reference, motor driver logic high, current sensor reference.
+[ ] Apply manufacturing suggestions.
+[ ] Compactiffy new layout. Not worth making the drives smaller, just ditch joystick and button space. Actually with no 5V line, maybe
+we can gain significant space? Redo 1 driver unit to check.
+[x] Reverse pressure sensor input cable direction.
+[ ] Switch to normal JST headers, instead of 90 degrees bent.
+[ ] Pairs of mirrored drives using a single power line and 16 input bus to minimize spaghetti from led drive. Can also put pull up resistors on top
+of bus line with some neat vias.
+[ ] Tidy up bulk capacitance.
+
+TODO Code
+---------
+
+[ ] Switch to MQTT over websockets? https://github.com/espressif/esp-mqtt https://www.npmjs.com/package/mqtt
+
+
+Done
+----
 
 [v] Ditch joystick and buttons; expose remaining pins.
 [v] Adjust resistance for the motor LED. Green is stronger than orange, put higher resistance for green.
@@ -17,7 +34,14 @@ No need, there is a protective diode from VDDUSB to the VIN pin, there won't any
 [v] Why did I want the 15V lower limit? The 5V regulator is goo up to 30 or more, what is the lowest rated thing?
 The regulator on the ESP is actually supplied by the 5V regulator, so no worries there. Fuck knows why I set the
 limit low, maybe I thought the EPS32 VIN pin is directly connected to VCC, which would limit to 15V, but it's not!
-[ ] Compactiffy new layout. Not worth making the drives smaller, just ditch joystick and button space.
 [v] Plate the mounting holes!
-[ ] Apply manufacturing suggestions.
-[ ] Change voltage divider scale to 1kohm - 8.2kohm.
+[v] Change voltage divider scale to 1kohm - 8.2kohm.
+
+Fixed
+-----
+
+[x] Fix dimensions of the joystick outline/components (it's too large)... Just ditch joystick.
+[v] Remove the low-pass capacitors for the motors. They cause the motor driver to trip on high
+current, turning the outputs to ground, which discharges the cap and the cycle repeats... until
+the driver overheats, duh.
+
