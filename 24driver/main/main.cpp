@@ -67,6 +67,9 @@ void setup(){
   // Keep the board turned on before anything else.
   power::setup();
 
+  // Pull-up RX to prevent handling random noise bytes.
+  pinMode(RX, INPUT_PULLUP);
+
   // Initialize inter-chip comms before the chips themselves.
   i2c::setup();
   spi::setup();

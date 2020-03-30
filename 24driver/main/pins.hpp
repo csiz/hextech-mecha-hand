@@ -22,6 +22,7 @@
 #define P0 GPIO_NUM_0
 #define SDA2 GPIO_NUM_17
 #define SCL2 GPIO_NUM_16
+// Defined in arduino header.
 // #define RX GPIO_NUM_3
 // #define TX GPIO_NUM_1
 
