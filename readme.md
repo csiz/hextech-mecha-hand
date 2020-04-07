@@ -4,6 +4,8 @@ Hextech Mechahand
 20 degree of freedom mechanical hand. Designed to be low cost and 3D printed with
 fully range of movement of a human hand.
 
+![Mechahand mk 6](media/mechahand_mk6.jpg)
+
 
 Project layout
 --------------
