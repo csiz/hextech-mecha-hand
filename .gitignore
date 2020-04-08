@@ -10,4 +10,8 @@ hand_esp32/components/arduino/
 24driver/components/ESPAsyncWebServer/
 24driver/web/node_modules
 24driver/web/dist
+leap_control/node_modules
+leap_control/dist
+24driver/jsinterface/node_modules
+24driver/jsinterface/dist
 *.gcode

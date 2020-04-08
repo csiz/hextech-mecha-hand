@@ -17,12 +17,14 @@ we can gain significant space? Redo 1 driver unit to check.
 [ ] Pairs of mirrored drives using a single power line and 16 input bus to minimize spaghetti from led drive. Can also put pull up resistors on top
 of bus line with some neat vias.
 [ ] Tidy up bulk capacitance.
+[ ] Power plane for the 3V3?
+
 
 TODO Code
 ---------
 
 [ ] Switch to MQTT over websockets? https://github.com/espressif/esp-mqtt https://www.npmjs.com/package/mqtt
-
+[ ] Switch OLED display to the second processor.
 
 Done
 ----
