@@ -9,10 +9,13 @@ import {version} from "24driver";
 // Hand data
 // ---------
 
+function make_default_digit_state (){
+  return {
+    valid: false,
 
+    leap_finger_id: null,
+    leap_finger_type: null,
 
-function make_default_hand_state () {
-  const default_digit_state = {
     distal_tip: null,
     distal_basis: null,
 
@@ -25,7 +28,9 @@ function make_default_hand_state () {
     metacarpal_tip: null,
     metacarpal_basis: null,
   };
+};
 
+function make_default_hand_state () {
   return {
     valid: false,
 
@@ -46,17 +51,19 @@ function make_default_hand_state () {
 
     palm_world_position: null,
 
+    palm_position: null,
+
     palm_pitch: null,
     palm_roll: null,
     palm_yaw: null,
 
 
     digits: {
-      thumb: {...default_digit_state},
-      index: {... default_digit_state},
-      middle: {... default_digit_state},
-      ring: {... default_digit_state},
-      pinkie: {... default_digit_state},
+      thumb: make_default_digit_state(),
+      index: make_default_digit_state(),
+      middle: make_default_digit_state(),
+      ring: make_default_digit_state(),
+      pinky: make_default_digit_state(),
     },
   };
 };
@@ -129,12 +136,13 @@ function parse_hand_state(leap_state){
   // Compute the tranform that switches coordinates to the arm perspective. However,
   // we keep the roll, since it's value is derived from the direction of gravity.
   const local_transform = arm_local_transform.clone()
-    .premultiply(new THREE.Matrix4().makeRotationZ(palm_roll))
-    .setPosition(palm_world_position.clone().negate());
+  .premultiply(new THREE.Matrix4().makeRotationZ(palm_roll))
+  .setPosition(palm_world_position.clone().negate());
 
 
   // Get the palm basis, in the reference frame of the arm.
   const palm_basis = palm_world_basis.clone().premultiply(local_transform);
+  const palm_position = palm_world_position.clone().applyMatrix4(local_transform);
 
   // Get the remaining Euler angles for the wrist/palm. The physical model of the hand
   // applies roll (Z) followed by yaw (Y) and finally pitch (X); use the same axis order.
@@ -145,6 +153,63 @@ function parse_hand_state(leap_state){
   // in the leap controller between the roll for the arm and the roll for the hand. But it
   // seems like we're really close; agreeing up to 2 decimal places in degrees.
 
+
+  // Get the pointables for this hand.
+  const leap_fingers = leap_state.pointables.filter(p => p.handId == leap_hand_id);
+
+  // Parse all fingers equally at first. We'll match them by type later (thumb vs pinkie).
+  const fingers = leap_fingers.map(leap_finger => {
+
+    const leap_finger_id = leap_finger.id;
+    const leap_finger_type = leap_finger.type;
+
+    // There are 4 bases for each finger corresponding to the metacarpal, proximal phalanx,
+    // medial phalanx and distal phalanx. The thumb is represented with a 0 length metacarpal.
+    let bases = leap_finger.bases.map(
+      base => new THREE.Matrix4().makeBasis(
+        ...base.map(vec => new THREE.Vector3(...vec))
+      )
+    );
+    if (bases.length != 4) return make_default_digit_state();
+
+    const distal_tip = new THREE.Vector3(...leap_finger.btipPosition).applyMatrix4(local_transform);
+    const distal_basis = bases[3].premultiply(local_transform);
+    const intermediate_tip = new THREE.Vector3(...leap_finger.dipPosition).applyMatrix4(local_transform);
+    const intermediate_basis = bases[2].premultiply(local_transform);
+    const proximal_tip = new THREE.Vector3(...leap_finger.pipPosition).applyMatrix4(local_transform);
+    const proximal_basis = bases[1].premultiply(local_transform);
+    const metacarpal_tip = new THREE.Vector3(... leap_finger.mcpPosition).applyMatrix4(local_transform);
+    const metacarpal_basis = bases[0].premultiply(local_transform);
+
+    return {
+      valid: true,
+      leap_finger_id,
+      leap_finger_type,
+      distal_tip,
+      distal_basis,
+      intermediate_tip,
+      intermediate_basis,
+      proximal_tip,
+      proximal_basis,
+      metacarpal_tip,
+      metacarpal_basis,
+    }
+  });
+
+  function pick_finger_type(type) {
+    let typed_fingers = fingers.filter(f => f.leap_finger_type == type);
+    return typed_fingers.length == 1 ? typed_fingers[0] : make_default_digit_state();
+  };
+
+  let digits = {
+    thumb: pick_finger_type(0),
+    index: pick_finger_type(1),
+    middle: pick_finger_type(2),
+    ring: pick_finger_type(3),
+    pinky: pick_finger_type(4),
+  };
+
+
   return {
     valid: true,
     leap_hand_id,
@@ -153,9 +218,12 @@ function parse_hand_state(leap_state){
     palm_world_basis,
     palm_basis,
     palm_world_position,
+    palm_position,
     palm_pitch,
     palm_roll,
     palm_yaw,
+
+    digits,
   };
 };
 
@@ -224,7 +292,7 @@ const height = 900;
 const ratio = width / height;
 
 // let camera = new THREE.PerspectiveCamera(90, ratio, 0.1, 1000);
-const camera_size = 1000;
+const camera_size = 500;
 let camera = new THREE.OrthographicCamera(-0.5*ratio*camera_size, +0.5*ratio*camera_size, +0.5*camera_size, -0.5*camera_size, 0.0, 2000);
 
 let renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
@@ -236,29 +304,83 @@ d3.select("main").append(() => renderer.domElement);
 
 let scene = new THREE.Scene();
 
-let cube_geometry = new THREE.BoxGeometry(200, 20, 200);
-let cube_material = new THREE.MeshBasicMaterial({color: 0x4040D0});
-let cube = new THREE.Mesh(cube_geometry, cube_material);
+let main_color = "royalblue";
+let edge_color = "black";
 
-scene.add(cube);
+function make_edgy_cube(w, h, d, color, edge_color) {
+  let cube_geometry = new THREE.BoxGeometry(w, h, d);
+  let cube_material = new THREE.MeshBasicMaterial({color});
+  let cube = new THREE.Mesh(cube_geometry, cube_material);
 
-let cube_edges_geometry = new THREE.EdgesGeometry(cube.geometry);
-let cube_edges_material = new THREE.LineBasicMaterial({color: 0x000000});
-let cube_edges = new THREE.LineSegments(cube_edges_geometry, cube_edges_material);
-cube_edges.renderOrder = 1;
+  let cube_edges_geometry = new THREE.EdgesGeometry(cube_geometry);
+  let cube_edges_material = new THREE.LineBasicMaterial({color: edge_color});
+  let cube_edges = new THREE.LineSegments(cube_edges_geometry, cube_edges_material);
+  cube_edges.renderOrder = 1;
 
-cube.add(cube_edges);
+  return {cube, cube_edges};
+};
+
+let {cube: palm_cube, cube_edges: palm_cube_edges} = make_edgy_cube(40, 5, 40, "orangered", edge_color);
+
+scene.add(palm_cube);
+palm_cube.add(palm_cube_edges);
 
 
-camera.position.z = 1000;
+let digit_models = ["thumb", "index", "middle", "ring", "pinky"].map(digit_name => {
+
+  let {cube: knuckle_cube, cube_edges: knuckle_cube_edges} = make_edgy_cube(20, 20, 20, main_color, edge_color);
+  scene.add(knuckle_cube);
+  knuckle_cube.add(knuckle_cube_edges);
+
+  let {cube: curl_cube, cube_edges: curl_cube_edges} = make_edgy_cube(20, 20, 20, main_color, edge_color);
+  scene.add(curl_cube);
+  curl_cube.add(curl_cube_edges);
+
+  let {cube: distal_cube, cube_edges: distal_cube_edges} = make_edgy_cube(10, 10, 10, main_color, edge_color);
+  scene.add(distal_cube);
+  distal_cube.add(distal_cube_edges);
+
+  let {cube: tip_cube, cube_edges: tip_cube_edges} = make_edgy_cube(20, 20, 20, main_color, edge_color);
+  scene.add(tip_cube);
+  tip_cube.add(tip_cube_edges);
+
+  return {
+    name: digit_name,
+    knuckle_cube, knuckle_cube_edges,
+    curl_cube, curl_cube_edges,
+    distal_cube, distal_cube_edges,
+    tip_cube, tip_cube_edges,
+  };
+});
+
+camera.position.z = 500;
 camera.position.y = 300;
+camera.lookAt(0, 0, 0);
+
 
 let animate = () => {
   requestAnimationFrame(animate);
 
   if (hand_state.valid) {
-    cube.position.copy(hand_state.palm_world_position);
-    cube.quaternion.setFromRotationMatrix(hand_state.palm_basis);
+    palm_cube.position.copy(hand_state.palm_position);
+    palm_cube.quaternion.setFromRotationMatrix(hand_state.palm_basis);
+
+    for (let digit_model of digit_models) {
+      let digit_state = hand_state.digits[digit_model.name];
+      if (digit_state.valid) {
+        digit_model.knuckle_cube.position.copy(digit_state.metacarpal_tip);
+        digit_model.knuckle_cube.quaternion.setFromRotationMatrix(digit_state.metacarpal_basis);
+
+        digit_model.curl_cube.position.copy(digit_state.proximal_tip);
+        digit_model.curl_cube.quaternion.setFromRotationMatrix(digit_state.proximal_basis);
+
+        digit_model.distal_cube.position.copy(digit_state.intermediate_tip);
+        digit_model.distal_cube.quaternion.setFromRotationMatrix(digit_state.intermediate_basis);
+
+        digit_model.tip_cube.position.copy(digit_state.distal_tip);
+        digit_model.tip_cube.quaternion.setFromRotationMatrix(digit_state.distal_basis);
+      }
+    }
   }
 
   renderer.render(scene, camera);
