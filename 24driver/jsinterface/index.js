@@ -283,11 +283,11 @@ export default class MotorDriver {
     const driver_time = data.getUint32(offset);
 
     // Assume 100ms elapses on the first update.
-    const driver_elapsed = this.state == null ? 0.1 : uint32_time_interval(this.state.driver_time, driver_time);
+    const driver_elapsed = this.state == null ? 100 : uint32_time_interval(this.state.driver_time, driver_time);
     offset += 4;
 
     const local_time = Date.now();
-    const local_elapsed = this.state == null ? 0.1 : (local_time - this.state.local_time);
+    const local_elapsed = this.state == null ? 100 : (local_time - this.state.local_time);
 
     let motor_channels = [];
     for (let i = 0; i < 24; i++) {
@@ -436,8 +436,8 @@ export default class MotorDriver {
     this.send(data.buffer);
   }
 
-  /* Send new configuration, we can also request it to be echoed back. */
-  send_config(new_config, {echo = false, save = false}){
+  /* Send new configuration, optionally saving it on the driver's non-volatile memory. */
+  send_config(new_config, save = false){
     // TODO: configure strain gauges too.
 
     // Build response and send it via websockets.
@@ -471,9 +471,6 @@ export default class MotorDriver {
 
     // Send payload.
     this.send(data.buffer);
-
-    // Request updated config.
-    if (echo) this.request_config();
   }
 }
 
@@ -496,9 +493,12 @@ const RELOAD_CONFIGURATION = 0x09; // Reload and ask for configuration.
 // Utils
 // -----
 
-// The motor drivers uses unsigned 32 bit integers to represent time. To get uint32
-// arithmetic correctly in javascript we need to cast our numbers into a typed array.
-function uint32_time_interval(a, b) {
+/* Compute time interval from u32 time a to u32 time b.
+
+The motor drivers uses unsigned 32 bit integers to represent time. To get uint32
+arithmetic correctly in javascript we need to cast our numbers into a typed array.
+*/
+export function uint32_time_interval(a, b) {
   let v = new Uint32Array(3);
   v[0] = a;
   v[1] = b;
