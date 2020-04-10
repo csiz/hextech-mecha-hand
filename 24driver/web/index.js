@@ -67,7 +67,7 @@ function connect_to_network() {
   offset += 1;
 
   // Set whether it's an external router or internal access point.
-  data[offset] = connect_to_network ? 1 : 0;
+  data[offset] = connect_to_router ? 1 : 0;
   offset += 1;
 
   // Send ssid and password as length byte and text bytes.
