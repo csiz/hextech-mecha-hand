@@ -3,8 +3,7 @@
 import * as d3 from "d3";
 import * as THREE from "three";
 
-import {version} from "24driver";
-
+import MotorDriver from "24driver";
 
 // Hand data
 // ---------
@@ -131,12 +130,12 @@ function parse_hand_state(leap_state){
   // But the arm isn't fully visible in the leap controller. We'll extract it from the
   // rotation between the vertical axis and the palm normal, with respect to the palm's
   // direction axis.
-  const palm_roll = signed_angle_on_plane(normal, new THREE.Vector3(0, 1, 0), direction);
+  const roll = signed_angle_on_plane(normal, new THREE.Vector3(0, 1, 0), direction);
 
   // Compute the tranform that switches coordinates to the arm perspective. However,
   // we keep the roll, since it's value is derived from the direction of gravity.
   const local_transform = arm_local_transform.clone()
-  .premultiply(new THREE.Matrix4().makeRotationZ(palm_roll))
+  .premultiply(new THREE.Matrix4().makeRotationZ(roll))
   .setPosition(palm_world_position.clone().negate());
 
 
@@ -147,8 +146,9 @@ function parse_hand_state(leap_state){
   // Get the remaining Euler angles for the wrist/palm. The physical model of the hand
   // applies roll (Z) followed by yaw (Y) and finally pitch (X); use the same axis order.
   const palm_angles = new THREE.Euler().setFromRotationMatrix(palm_basis, "ZYX");
+  const palm_roll = palm_angles.z;
   const palm_yaw = -palm_angles.y;
-  const palm_pitch = -palm_angles.x;
+  const palm_pitch = palm_angles.x;
   // We should already have palm roll with respect to gravity. There is a small discrepancy
   // in the leap controller between the roll for the arm and the roll for the hand. But it
   // seems like we're really close; agreeing up to 2 decimal places in degrees.
@@ -387,3 +387,40 @@ let animate = () => {
 };
 
 animate();
+
+
+
+// Motor Driver
+// ------------
+
+let channels = {
+  wrist_roll: 23,
+  wrist_yaw: 19,
+  wrist_pitch: 15,
+};
+
+let driver = new MotorDriver();
+
+driver.onsendcommands = function(){
+  if (!hand_state.valid) return;
+
+  driver.commands.seek[channels.wrist_roll] = -hand_state.palm_roll / (0.8 * Math.PI) + 0.5;
+  driver.commands.seek[channels.wrist_yaw] = hand_state.palm_yaw / (0.2 * Math.PI) + 0.5;
+  driver.commands.seek[channels.wrist_pitch] = hand_state.palm_pitch / (0.5 * Math.PI) + 0.5;
+
+  console.log(driver.commands);
+}
+
+// UI
+// --
+
+d3.select("#driver_connect").on("click", () => {
+  let ip = d3.select("#driver_ip").property("value");
+  driver.url = `ws://${ip}/ws`;
+  driver.connect();
+});
+
+
+d3.select("body")
+  .on("keydown", () => { if (d3.event.code == "Space") driver.command(); })
+  .on("keyup", () => { if (d3.event.code == "Space") driver.release(); });
