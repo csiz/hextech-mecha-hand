@@ -5,7 +5,7 @@
 export const version = 1;
 
 /* Connect to a motor driver and continuously request state updates. */
-export default class MotorDriver {
+export class MotorDriver {
   /* Connect to driver at url. */
   constructor(url = null) {
 
@@ -67,9 +67,6 @@ export default class MotorDriver {
 
     /* Handle for the repeated commands. */
     this.send_commands_handle = null;
-
-    // All data members initialized, time to connect.
-    if (this.url != null) connect();
   }
 
   /* Continuously command the motors. */
@@ -396,8 +393,6 @@ export default class MotorDriver {
     this.onsendcommands();
 
     if (commands == null) commands = this.commands;
-
-    console.log("sending commands: ", commands);
 
     // We need the current configuration to determine proper seek values.
     if (this.config == null) return;

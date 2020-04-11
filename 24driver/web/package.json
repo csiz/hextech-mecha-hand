@@ -4,7 +4,8 @@
   "description": "Web controller for 24 driver.",
   "private": true,
   "scripts": {
-    "build": "webpack"
+    "build": "webpack",
+    "start": "webpack-dev-server --open"
   },
   "author": "Calin Mocanu",
   "license": "ISC",
@@ -16,7 +17,10 @@
     "d3-scale": "^3.2.1",
     "d3-selection": "^1.4.1",
     "d3-shape": "^1.3.7",
-    "webpack": "^4.41.5",
-    "webpack-cli": "^3.3.10"
+    "webpack": "^4.42.1"
+  },
+  "devDependencies": {
+    "webpack-cli": "^3.3.11",
+    "webpack-dev-server": "^3.10.3"
   }
 }

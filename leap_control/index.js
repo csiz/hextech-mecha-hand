@@ -3,7 +3,7 @@
 import * as d3 from "d3";
 import * as THREE from "three";
 
-import MotorDriver from "24driver";
+import {MotorDriver} from "24driver";
 
 // Hand data
 // ---------

@@ -13,4 +13,9 @@ module.exports = {
       { from: './index.html', to: 'index.html' }
     ]),
   ],
+  resolve: {
+    alias: {
+      "24driver": path.resolve(__dirname, "../jsinterface")
+    }
+  }
 };
