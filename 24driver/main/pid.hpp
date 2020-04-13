@@ -32,7 +32,7 @@ struct PID {
   // Error threshold where we output 0 control.
   float threshold = 0.01;
   // Threshold in the last control direction, allowing for some overshoot with control 0.
-  float overshoot = 0.02;
+  float overshoot_threshold = 0.02;
 
   // Output power [-1, +1].
   float control = 0;
@@ -55,9 +55,12 @@ struct PID {
     using std::abs;
     using mystd::clamp;
 
+    // We've overshot the target if the error is opposite to the last control direction.
+    const bool overshoot = (error * last_direction < 0);
+
     // Zero out error if within the threshold. Note that diff still works to stop momentum.
     // Same if we overshot (error is opposite sign of control) and we're within the limit.
-    if ((abs(error) < threshold) or ((abs(error) < overshoot) and (error * last_direction < 0))) {
+    if ((abs(error) < threshold) or (overshoot and (abs(error) < overshoot_threshold))) {
       error = 0;
       integral_control = 0;
     }
@@ -70,16 +73,18 @@ struct PID {
     last_error = error;
     last_target = target;
 
-    // Keep a running integral of the error. Also avoid dividing by 0.
-    if (i_time > 0.0001) {
-      integral_control = integral_control + p * error * elapsed / i_time;
-    }
 
     //  Compute the control due to proportional and derivative terms.
     const float pd_control = p * (error + diff);
 
-    // Reset the integral if we are at maximum control without it.
-    if (abs(pd_control) >= 1.0) integral_control = 0;
+    // Reset integral term if going counter to pd term; we've already passed the target.
+    if (pd_control * integral_control < 0) integral_control = 0;
+
+    // Keep a running integral of the error; unless we're at maximum power. Also avoid dividing by 0.
+    if (i_time > 0.0001 and abs(pd_control) < 1.0) {
+      // Clamp the maximum integral level to maximum power.
+      integral_control = clamp(integral_control + p * error * elapsed / i_time, -1.0, +1.0);
+    }
 
     // Add the integral term and clamp to valid output range.
     control = clamp(pd_control + integral_control, -1.0, +1.0);
