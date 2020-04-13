@@ -275,7 +275,7 @@ namespace web {
 
           case CONFIGURE: {
             // Similarly to sending configuration, with 1 extra byte to tell if we should save it.
-            if (len != 338) return;
+            if (len != 818) return;
 
             const bool save = get_bool(data + offset);
             offset += 1;
@@ -288,7 +288,12 @@ namespace web {
               state.channels[i].max_position = get_float32(data + offset + 4);
               state.channels[i].reverse_output = get_bool(data + offset + 8);
               state.channels[i].reverse_input = get_bool(data + offset + 9);
-              offset += 10;
+              state.channels[i].pid.p = get_float32(data + offset + 10);
+              state.channels[i].pid.i_time = get_float32(data + offset + 14);
+              state.channels[i].pid.d_time = get_float32(data + offset + 18);
+              state.channels[i].pid.threshold = get_float32(data + offset + 22);
+              state.channels[i].pid.overshoot_threshold = get_float32(data + offset + 26);
+              offset += 30;
             }
 
             // Get strain gauge coefficients.
@@ -472,7 +477,7 @@ namespace web {
     // ----------------
 
     // Build state message.
-    const size_t config_size = 337;
+    const size_t config_size = 817;
     uint8_t config_msg[config_size] = {};
 
     using state::state;
@@ -487,8 +492,14 @@ namespace web {
       set_float32(config_msg + offset + 4, state.channels[i].max_position);
       set_bool(config_msg + offset + 8, state.channels[i].reverse_output);
       set_bool(config_msg + offset + 9, state.channels[i].reverse_input);
-      offset += 10;
+      set_float32(config_msg + offset + 10, state.channels[i].pid.p);
+      set_float32(config_msg + offset + 14, state.channels[i].pid.i_time);
+      set_float32(config_msg + offset + 18, state.channels[i].pid.d_time);
+      set_float32(config_msg + offset + 22, state.channels[i].pid.threshold);
+      set_float32(config_msg + offset + 26, state.channels[i].pid.overshoot_threshold);
+      offset += 30;
     }
+
     // Send strain gauge coefficients.
     for (size_t i = 0; i < 12; i++){
       set_float32(config_msg + offset + 0, state.gauges[i].zero_offset);

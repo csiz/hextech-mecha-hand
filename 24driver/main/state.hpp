@@ -97,6 +97,20 @@ namespace state {
       snprintf(key, max_key, "c%2d-rev-inp", i);
       set_bool(key, channel.reverse_input);
 
+      snprintf(key, max_key, "c%2d-pid-p", i);
+      set_float(key, channel.pid.p);
+
+      snprintf(key, max_key, "c%2d-pid-i", i);
+      set_float(key, channel.pid.i_time);
+
+      snprintf(key, max_key, "c%2d-pid-d", i);
+      set_float(key, channel.pid.d_time);
+
+      snprintf(key, max_key, "c%2d-pid-t", i);
+      set_float(key, channel.pid.threshold);
+
+      snprintf(key, max_key, "c%2d-pid-o", i);
+      set_float(key, channel.pid.overshoot_threshold);
     }
 
     // TODO: save gauges config.
@@ -125,6 +139,20 @@ namespace state {
       snprintf(key, max_key, "c%2d-rev-inp", i);
       get_bool(key, channel.reverse_input);
 
+      snprintf(key, max_key, "c%2d-pid-p", i);
+      get_float(key, channel.pid.p);
+
+      snprintf(key, max_key, "c%2d-pid-i", i);
+      get_float(key, channel.pid.i_time);
+
+      snprintf(key, max_key, "c%2d-pid-d", i);
+      get_float(key, channel.pid.d_time);
+
+      snprintf(key, max_key, "c%2d-pid-t", i);
+      get_float(key, channel.pid.threshold);
+
+      snprintf(key, max_key, "c%2d-pid-o", i);
+      get_float(key, channel.pid.overshoot_threshold);
     }
 
     // TODO: load gauges configs.

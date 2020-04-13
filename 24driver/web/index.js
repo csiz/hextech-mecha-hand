@@ -104,6 +104,11 @@ function show_config() {
       .property("checked", channel.reverse_input);
     div.select("input.set-reverse-output")
       .property("checked", channel.reverse_output);
+
+    div.select("input.set-pid-p").property("value", channel.p.toFixed(2));
+    div.select("input.set-pid-i").property("value", channel.i_time.toFixed(3));
+    div.select("input.set-pid-d").property("value", channel.d_time.toFixed(4));
+    div.select("input.set-pid-t").property("value", channel.threshold.toFixed(4));
   });
 }
 
@@ -137,6 +142,26 @@ function send_config(save = false){
     .each(function(_channel, i) {
       driver.config.motor_channels[i].reverse_output = Boolean(this.checked);
     });
+
+
+  d3.selectAll("#drivers input.set-pid-p")
+    .each(function(_channel, i) {
+      driver.config.motor_channels[i].p = parseFloat(this.value);
+    });
+  d3.selectAll("#drivers input.set-pid-i")
+    .each(function(_channel, i) {
+      driver.config.motor_channels[i].i_time = parseFloat(this.value);
+    });
+  d3.selectAll("#drivers input.set-pid-d")
+    .each(function(_channel, i) {
+      driver.config.motor_channels[i].d_time = parseFloat(this.value);
+    });
+  d3.selectAll("#drivers input.set-pid-t")
+    .each(function(_channel, i) {
+      driver.config.motor_channels[i].threshold = parseFloat(this.value);
+      driver.config.motor_channels[i].overshoot_threshold = 2*parseFloat(this.value);
+    });
+
 
   // TODO: configure strain gauges too.
 
@@ -606,6 +631,61 @@ function setup_graphs() {
 
         reverse_output_label.append("span")
           .text("output");
+
+
+        let pid_span = inputs_grid.append("span")
+          .style("grid-column-start", 1)
+          .style("grid-column-end", 3);
+
+        pid_span.append("span").text("P:");
+
+        pid_span.append("input")
+          .classed("set-pid-p", true)
+          .attr("id", i => `set-pid-p-${i}`)
+          .attr("type", "number")
+          .attr("min", "0")
+          .attr("max", "50")
+          .attr("step", "0.1")
+          .style("width", "3em")
+          .on("change", send_config);
+
+
+        pid_span.append("span").text("I:");
+
+        pid_span.append("input")
+          .classed("set-pid-i", true)
+          .attr("id", i => `set-pid-i-${i}`)
+          .attr("type", "number")
+          .attr("min", "0")
+          .attr("max", "5")
+          .attr("step", "0.01")
+          .style("width", "4em")
+          .on("change", send_config);
+
+        pid_span.append("span").text("D:");
+
+        pid_span.append("input")
+          .classed("set-pid-d", true)
+          .attr("id", i => `set-pid-d-${i}`)
+          .attr("type", "number")
+          .attr("min", "0")
+          .attr("max", "2")
+          .attr("step", "0.01")
+          .style("width", "4em")
+          .on("change", send_config);
+
+        pid_span.append("span").text("T:");
+
+        pid_span.append("input")
+          .classed("set-pid-t", true)
+          .attr("id", i => `set-pid-t-${i}`)
+          .attr("type", "number")
+          .attr("min", "0")
+          .attr("max", "0.1")
+          .attr("step", "0.01")
+          .style("width", "3em")
+          .on("change", send_config);
+
       }
     );
 
