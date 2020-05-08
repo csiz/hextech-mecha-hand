@@ -8,10 +8,30 @@
   </style>
 </head>
 <body>
-  <button id="driver_connect">Connect</button>
-  <input id="driver_ip" />
+  <main style="display: inline-block"></main>
 
-  <main></main>
+  <div style="display: inline-block; vertical-align: top;">
+    <p>
+      <button id="driver_connect">Connect</button>
+      <input id="driver_ip" />
+      <span id="command_flag">Released</span>
+    </p>
+
+
+    <table style="display: inline-block;">
+      <thead><tr>
+        <th>Joint</th>
+        <th>Angle</th>
+        <th>Seek</th>
+        <th>Position</th>
+        <th>Power</th>
+        <th>Current</th>
+      </tr></thead>
+      <tbody id="joint_info">
+
+      </tbody>
+    </table>
+  </div>
 
   <script src="main.js"></script>
 </body>

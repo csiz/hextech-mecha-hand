@@ -27,10 +27,7 @@ export class MotorDriver {
     this.onclose = () => {};
 
     /* Commands to send to the motor driver; see `command` and `release`. */
-    this.commands = {
-      power: new Array(24).fill(0.0),
-      seek: new Array(24).fill(null),
-    };
+    this.commands = zero_commands();
 
     /* Latest state of the motor driver. */
     this.state = null;
@@ -78,8 +75,12 @@ export class MotorDriver {
   /* Release command of the motors. */
   release() {
     if (this.send_commands_handle != null) {
+      // Stop sending commands; if scheduled.
       clearInterval(this.send_commands_handle);
       this.send_commands_handle = null;
+
+      // Send the null command to stop motors.
+      this.send_commands(zero_commands());
     }
   }
 
@@ -509,6 +510,13 @@ const RELOAD_CONFIGURATION = 0x09; // Reload and ask for configuration.
 // Utils
 // -----
 
+export function zero_commands(){
+  return {
+    power: new Array(24).fill(0.0),
+    seek: new Array(24).fill(null),
+  };
+}
+
 /* Compute time interval from u32 time a to u32 time b.
 
 The motor drivers uses unsigned 32 bit integers to represent time. To get uint32
@@ -535,4 +543,9 @@ export function exp_average(value, last_value, gamma){
 /* Interpolate fraction between min and max value. */
 export function interpolate(f, min, max){
   return f * max + (1 - f) * min;
+}
+
+/* Get fraction between min and max value. */
+export function deinterpolate(p, min, max){
+  return (p - min) / (max - min);
 }

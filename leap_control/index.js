@@ -3,7 +3,7 @@
 import * as d3 from "d3";
 import * as THREE from "three";
 
-import {MotorDriver} from "24driver";
+import {MotorDriver, deinterpolate, zero_commands} from "24driver";
 
 // Hand data
 // ---------
@@ -55,6 +55,9 @@ function make_default_hand_state () {
     palm_pitch: null,
     palm_roll: null,
     palm_yaw: null,
+
+    thumb_pivot: null,
+    pinky_pivot: null,
 
 
     digits: {
@@ -135,8 +138,8 @@ function parse_hand_state(leap_state){
   // Compute the tranform that switches coordinates to the arm perspective. However,
   // we keep the roll, since it's value is derived from the direction of gravity.
   const local_transform = arm_local_transform.clone()
-  .premultiply(new THREE.Matrix4().makeRotationZ(roll))
-  .setPosition(palm_world_position.clone().negate());
+    .premultiply(new THREE.Matrix4().makeRotationZ(roll))
+    .setPosition(palm_world_position.clone().negate());
 
 
   // Get the palm basis, in the reference frame of the arm.
@@ -181,6 +184,22 @@ function parse_hand_state(leap_state){
     const metacarpal_tip = new THREE.Vector3(... leap_finger.mcpPosition).applyMatrix4(local_transform);
     const metacarpal_basis = bases[0].premultiply(local_transform);
 
+    // Get base angles from the angle between the proximal and metacarpal.
+    const proximal_angles = new THREE.Euler().setFromRotationMatrix(
+      proximal_basis.premultiply(metacarpal_basis.clone().transpose()),
+      "YXZ");
+
+    const yaw = -proximal_angles.y;
+    const pitch = -proximal_angles.x;
+
+    // Get the curl of the finger from the angle betwen the tip and proximal.
+    const tip_angles = new THREE.Euler().setFromRotationMatrix(
+      distal_basis.premultiply(proximal_basis.clone().transpose()),
+      "XYZ");
+
+    const curl = -tip_angles.x;
+
+
     return {
       valid: true,
       leap_finger_id,
@@ -193,6 +212,10 @@ function parse_hand_state(leap_state){
       proximal_basis,
       metacarpal_tip,
       metacarpal_basis,
+
+      yaw,
+      pitch,
+      curl,
     }
   });
 
@@ -210,6 +233,15 @@ function parse_hand_state(leap_state){
   };
 
 
+  let thumb_pivot = digits.thumb.valid
+    ? signed_angle_on_plane(new THREE.Vector3().subVectors(digits.thumb.proximal_tip, palm_position), lateral.clone().negate(), direction)
+    : null;
+
+  let pinky_pivot = digits.pinky.valid
+    ? signed_angle_on_plane(new THREE.Vector3().subVectors(digits.pinky.proximal_tip, palm_position), lateral, direction)
+    : null;
+
+
   return {
     valid: true,
     leap_hand_id,
@@ -222,6 +254,8 @@ function parse_hand_state(leap_state){
     palm_pitch,
     palm_roll,
     palm_yaw,
+    thumb_pivot,
+    pinky_pivot,
 
     digits,
   };
@@ -259,6 +293,7 @@ function leap_connect(){
     }
 
     hand_state = parse_hand_state(leap_state);
+    update_commands();
   };
 
   // On socket close
@@ -287,8 +322,8 @@ leap_connect();
 // Hand Graphics
 // -------------
 
-const width = 1600;
-const height = 900;
+const width = 1280;
+const height = 720;
 const ratio = width / height;
 
 // let camera = new THREE.PerspectiveCamera(90, ratio, 0.1, 1000);
@@ -397,18 +432,98 @@ let channels = {
   wrist_roll: 23,
   wrist_yaw: 19,
   wrist_pitch: 15,
+  thumb_pivot: 7,
+  pinky_pivot: 11,
+
+  pinky_curl: 4,
+  pinky_pitch: 5,
+  pinky_yaw: 6,
+
+  ring_curl: 8,
+  ring_pitch: 9,
+  ring_yaw: 10,
+
+  middle_curl: 12,
+  middle_pitch: 13,
+  middle_yaw: 14,
+
+  index_curl: 16,
+  index_pitch: 17,
+  index_yaw: 18,
+
+  thumb_curl: 20,
+  thumb_pitch: 21,
+  thumb_yaw: 22,
 };
+
 
 let driver = new MotorDriver();
 
-driver.onsendcommands = function(){
+function update_commands(){
+  // Reset commands; we'll fill up the valid ones after.
+  driver.commands = zero_commands();
+
   if (!hand_state.valid) return;
 
-  driver.commands.seek[channels.wrist_roll] = -hand_state.palm_roll / (0.8 * Math.PI) + 0.5;
-  driver.commands.seek[channels.wrist_yaw] = hand_state.palm_yaw / (0.2 * Math.PI) + 0.5;
-  driver.commands.seek[channels.wrist_pitch] = hand_state.palm_pitch / (0.5 * Math.PI) + 0.5;
+  const PI = Math.PI;
+  let seek = driver.commands.seek;
 
-  console.log(driver.commands);
+
+  seek[channels.wrist_roll] = -hand_state.palm_roll / (0.8 * PI) + 0.5;
+  seek[channels.wrist_yaw] = hand_state.palm_yaw / (0.2 * PI) + 0.5;
+  seek[channels.wrist_pitch] = hand_state.palm_pitch / (0.4 * PI) + 0.6;
+
+  if (hand_state.thumb_pivot != null) {
+    seek[channels.thumb_pivot] = hand_state.thumb_pivot / (0.4 * PI) + 0.15;
+  }
+
+  if (hand_state.pinky_pivot != null) {
+    seek[channels.pinky_pivot] = -hand_state.pinky_pivot / (0.2 * PI) + 0.1;
+  }
+
+  let {thumb, index, middle, ring, pinky} = hand_state.digits;
+
+  if (pinky.valid) {
+
+    seek[channels.pinky_yaw] = pinky.yaw / (0.1 * PI) + 0.3;
+    seek[channels.pinky_pitch] = -pinky.pitch / (0.6 * PI) + 0.7;
+    seek[channels.pinky_curl] = -pinky.curl / (0.8 * PI) + 0.9;
+
+  }
+
+  if (ring.valid) {
+
+    seek[channels.ring_yaw] = ring.yaw / (0.1 * PI) + 0.3;
+    seek[channels.ring_pitch] = -ring.pitch / (0.6 * PI) + 0.7;
+    seek[channels.ring_curl] = -ring.curl / (0.8 * PI) + 0.9;
+
+  }
+
+  if (middle.valid) {
+
+    seek[channels.middle_yaw] = middle.yaw / (0.1 * PI) + 0.3;
+    seek[channels.middle_pitch] = -middle.pitch / (0.6 * PI) + 0.7;
+    seek[channels.middle_curl] = -middle.curl / (0.8 * PI) + 0.9;
+
+  }
+
+  if (index.valid) {
+
+    seek[channels.index_yaw] = index.yaw / (0.2 * PI) + 0.2;
+    seek[channels.index_pitch] = -index.pitch / (0.6 * PI) + 0.7;
+    seek[channels.index_curl] = -index.curl / (0.6 * PI) + 1.2;
+
+  }
+
+  if (thumb.valid) {
+
+    seek[channels.thumb_yaw] = thumb.yaw / (0.2 * PI) + 0.7;
+    seek[channels.thumb_pitch] = -thumb.pitch / (0.3 * PI) + 0.4;
+    seek[channels.thumb_curl] = -thumb.curl / (0.8 * PI) + 0.9;
+
+  }
+
+
 }
 
 // UI
@@ -422,5 +537,102 @@ d3.select("#driver_connect").on("click", () => {
 
 
 d3.select("body")
-  .on("keydown", () => { if (d3.event.code == "Space") driver.command(); })
-  .on("keyup", () => { if (d3.event.code == "Space") driver.release(); });
+  .on("keydown", () => {
+    if (d3.event.code == "Space") {
+      driver.command();
+      d3.select("#command_flag").text("Commanding").style("color", "orangered");
+    }
+  })
+  .on("keyup", () => {
+    if (d3.event.code == "Space"){
+      driver.release();
+      d3.select("#command_flag").text("Released").style("color", null);
+    }
+  });
+
+function degrees(radians){
+  if (radians == undefined) return "-";
+  return (radians * 180 / Math.PI).toFixed(0);
+}
+
+
+function get_info(channel) {
+  // Get the command we're about to send.
+  let seek_to_send = driver.commands.seek[channel];
+  let formatted_seek = seek_to_send == null ? "-" : seek_to_send.toFixed(2);
+
+  // Skip info if we don't have state and config.
+  if (driver.state == null || driver.config == null) {
+    return [formatted_seek, "-", "-", "-"];
+  }
+
+
+  // Get measured position as fraction between min and max.
+  let position = deinterpolate(
+    driver.state.motor_channels[channel].position,
+    driver.config.motor_channels[channel].min_position,
+    driver.config.motor_channels[channel].max_position);
+
+  // Get the PWM rate and current currently being sent to the motors.
+  let driving_power = driver.state.motor_channels[channel].power;
+  let driving_current = driver.state.motor_channels[channel].current;
+
+  return [
+    formatted_seek,
+    position.toFixed(2),
+    driving_power.toFixed(2),
+    driving_current.toFixed(3)];
+}
+
+
+
+function show_joint_info(){
+  // Skip if the hand isn't valid.
+  if (!hand_state.valid) return;
+
+  let {thumb, index, middle, ring, pinky} = hand_state.digits;
+
+  let joint_info = [
+    ["Wrist Roll", degrees(hand_state.palm_roll), ...get_info(channels.wrist_roll)],
+    ["Wrist Yaw", degrees(hand_state.palm_yaw), ...get_info(channels.wrist_yaw)],
+    ["Wrist Pitch", degrees(hand_state.palm_pitch), ...get_info(channels.wrist_pitch)],
+    ["Thumb Pivot", degrees(hand_state.thumb_pivot), ...get_info(channels.thumb_pivot)],
+    ["Pinky Pivot", degrees(hand_state.pinky_pivot), ...get_info(channels.pinky_pivot)],
+
+    ["Pinky Yaw", degrees(pinky.yaw), ...get_info(channels.pinky_yaw)],
+    ["Pinky Pitch", degrees(pinky.pitch), ...get_info(channels.pinky_pitch)],
+    ["Pinky Curl", degrees(pinky.curl), ...get_info(channels.pinky_curl)],
+
+    ["Ring Yaw", degrees(ring.yaw), ...get_info(channels.ring_yaw)],
+    ["Ring Pitch", degrees(ring.pitch), ...get_info(channels.ring_pitch)],
+    ["Ring Curl", degrees(ring.curl), ...get_info(channels.ring_curl)],
+
+    ["Middle Yaw", degrees(middle.yaw), ...get_info(channels.middle_yaw)],
+    ["Middle Pitch", degrees(middle.pitch), ...get_info(channels.middle_pitch)],
+    ["Middle Curl", degrees(middle.curl), ...get_info(channels.middle_curl)],
+
+    ["Index Yaw", degrees(index.yaw), ...get_info(channels.index_yaw)],
+    ["Index Pitch", degrees(index.pitch), ...get_info(channels.index_pitch)],
+    ["Index Curl", degrees(index.curl), ...get_info(channels.index_curl)],
+
+    ["Thumb Yaw", degrees(thumb.yaw), ...get_info(channels.thumb_yaw)],
+    ["Thumb Pitch", degrees(thumb.pitch), ...get_info(channels.thumb_pitch)],
+    ["Thumb Curl", degrees(thumb.curl), ...get_info(channels.thumb_curl)],
+  ];
+
+  d3.select("#joint_info")
+    .selectAll("tr")
+    .data(joint_info)
+    .join("tr")
+      .selectAll("td")
+      .data(row => row)
+      .join("td")
+        .text(value => value);
+}
+
+function update_ui() {
+  requestAnimationFrame(update_ui);
+  show_joint_info();
+}
+
+update_ui();

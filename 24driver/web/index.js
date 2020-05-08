@@ -14,8 +14,7 @@ import {MotorDriver, exp_average, clamp} from "24driver";
 // ------------------
 
 // Websocket url.
-// const url = `ws://${location.host}/ws`;
-const url = `ws://192.168.1.19/ws`;
+const url = `ws://${location.host}/ws`;
 
 let driver = new MotorDriver(url);
 
@@ -326,8 +325,8 @@ driver.onstate = (state) => {
     let channel = state.motor_channels[i];
     let channel_limits = motor_channel_limits[i];
     if (channel_limits.auto_limits) {
-      channel_limits.auto_min_position = Math.min(channel_limits.auto_min_position, last(channel.position));
-      channel_limits.auto_max_position = Math.max(channel_limits.auto_max_position, last(channel.position));
+      channel_limits.auto_min_position = Math.min(channel_limits.auto_min_position, channel.position);
+      channel_limits.auto_max_position = Math.max(channel_limits.auto_max_position, channel.position);
     }
   }
 }
