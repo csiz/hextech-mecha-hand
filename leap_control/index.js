@@ -4,6 +4,7 @@ import * as d3 from "d3";
 import * as THREE from "three";
 
 import {MotorDriver, deinterpolate, zero_commands} from "24driver";
+import { local } from "d3";
 
 // Hand data
 // ---------
@@ -106,13 +107,14 @@ function parse_hand_state(leap_state){
   // Remember the hand id, we need it to match the fingers.
   const leap_hand_id = leap_hand.id;
 
-  // We'll use the basis of the arm as
+  // We'll use the basis of the arm as origin axis.
   const arm_world_basis = new THREE.Matrix4().makeBasis(
     ...leap_hand.armBasis.map(vec => new THREE.Vector3(...vec))
   );
 
-  // Because the matrix is orthonormal, we can transpose it to get the inverse.
-  const arm_local_transform = arm_world_basis.clone().transpose();
+  // Get the position of the wrist, assuming it's aligned with the arm basis.
+  const wrist_world_position = new THREE.Vector3(... leap_hand.wrist);
+
 
   // Get palm coordinates and basis.
   const palm_world_position = new THREE.Vector3(...leap_hand.palmPosition);
@@ -137,14 +139,25 @@ function parse_hand_state(leap_state){
 
   // Compute the tranform that switches coordinates to the arm perspective. However,
   // we keep the roll, since it's value is derived from the direction of gravity.
-  const local_transform = arm_local_transform.clone()
-    .premultiply(new THREE.Matrix4().makeRotationZ(roll))
-    .setPosition(palm_world_position.clone().negate());
 
+  // Because the matrix is orthonormal, we can transpose it to get the inverse.
+  const arm_local_transform = arm_world_basis.clone().transpose();
+
+  const local_transform = arm_local_transform.clone()
+    .premultiply(new THREE.Matrix4().makeRotationZ(roll));
+
+  // When applying matrix4 the position is set after the rotation. To center the object in
+  // a single command, we then need to compute the rotated origin coordinates and negate them.
+  local_transform.setPosition(
+    wrist_world_position.clone().applyMatrix4(local_transform).negate());
+
+
+  const wrist_position = wrist_world_position.clone().applyMatrix4(local_transform);
+  const arm_basis = arm_world_basis.clone().premultiply(local_transform);
 
   // Get the palm basis, in the reference frame of the arm.
-  const palm_basis = palm_world_basis.clone().premultiply(local_transform);
   const palm_position = palm_world_position.clone().applyMatrix4(local_transform);
+  const palm_basis = palm_world_basis.clone().premultiply(local_transform);
 
   // Get the remaining Euler angles for the wrist/palm. The physical model of the hand
   // applies roll (Z) followed by yaw (Y) and finally pitch (X); use the same axis order.
@@ -186,7 +199,7 @@ function parse_hand_state(leap_state){
 
     // Get base angles from the angle between the proximal and metacarpal.
     const proximal_angles = new THREE.Euler().setFromRotationMatrix(
-      proximal_basis.premultiply(metacarpal_basis.clone().transpose()),
+      proximal_basis.clone().premultiply(metacarpal_basis.clone().transpose()),
       "YXZ");
 
     const yaw = -proximal_angles.y;
@@ -194,7 +207,7 @@ function parse_hand_state(leap_state){
 
     // Get the curl of the finger from the angle betwen the tip and proximal.
     const tip_angles = new THREE.Euler().setFromRotationMatrix(
-      distal_basis.premultiply(proximal_basis.clone().transpose()),
+      distal_basis.clone().premultiply(proximal_basis.clone().transpose()),
       "XYZ");
 
     const curl = -tip_angles.x;
@@ -247,6 +260,9 @@ function parse_hand_state(leap_state){
     leap_hand_id,
     local_transform,
     arm_world_basis,
+    arm_basis,
+    wrist_position,
+
     palm_world_basis,
     palm_basis,
     palm_world_position,
@@ -326,9 +342,8 @@ const width = 1280;
 const height = 720;
 const ratio = width / height;
 
-// let camera = new THREE.PerspectiveCamera(90, ratio, 0.1, 1000);
 const camera_size = 500;
-let camera = new THREE.OrthographicCamera(-0.5*ratio*camera_size, +0.5*ratio*camera_size, +0.5*camera_size, -0.5*camera_size, 0.0, 2000);
+let camera = new THREE.OrthographicCamera(-0.5*ratio*camera_size, +0.5*ratio*camera_size, +0.5*camera_size, -0.5*camera_size, 0.0, 5000);
 
 let renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
 renderer.setSize(width, height);
@@ -356,9 +371,13 @@ function make_edgy_cube(w, h, d, color, edge_color) {
 };
 
 let {cube: palm_cube, cube_edges: palm_cube_edges} = make_edgy_cube(40, 5, 40, "orangered", edge_color);
-
 scene.add(palm_cube);
 palm_cube.add(palm_cube_edges);
+
+
+let {cube: wrist_cube, cube_edges: wrist_cube_edges} = make_edgy_cube(20, 20, 10, "orangered", edge_color);
+scene.add(wrist_cube);
+wrist_cube.add(wrist_cube_edges);
 
 
 let digit_models = ["thumb", "index", "middle", "ring", "pinky"].map(digit_name => {
@@ -390,7 +409,7 @@ let digit_models = ["thumb", "index", "middle", "ring", "pinky"].map(digit_name 
 
 camera.position.z = 500;
 camera.position.y = 300;
-camera.lookAt(0, 0, 0);
+camera.lookAt(0, 100, 0);
 
 
 let animate = () => {
@@ -399,6 +418,9 @@ let animate = () => {
   if (hand_state.valid) {
     palm_cube.position.copy(hand_state.palm_position);
     palm_cube.quaternion.setFromRotationMatrix(hand_state.palm_basis);
+
+    wrist_cube.position.copy(hand_state.wrist_position);
+    wrist_cube.quaternion.setFromRotationMatrix(hand_state.arm_basis);
 
     for (let digit_model of digit_models) {
       let digit_state = hand_state.digits[digit_model.name];
@@ -470,24 +492,24 @@ function update_commands(){
 
 
   seek[channels.wrist_roll] = -hand_state.palm_roll / (0.8 * PI) + 0.5;
-  seek[channels.wrist_yaw] = hand_state.palm_yaw / (0.2 * PI) + 0.5;
-  seek[channels.wrist_pitch] = hand_state.palm_pitch / (0.4 * PI) + 0.6;
+  seek[channels.wrist_yaw] = hand_state.palm_yaw / (0.3 * PI) + 0.3;
+  seek[channels.wrist_pitch] = hand_state.palm_pitch / (0.4 * PI) + 0.5;
 
   if (hand_state.thumb_pivot != null) {
-    seek[channels.thumb_pivot] = hand_state.thumb_pivot / (0.4 * PI) + 0.15;
+    seek[channels.thumb_pivot] = hand_state.thumb_pivot / (0.4 * PI) + 0.0;
   }
 
   if (hand_state.pinky_pivot != null) {
-    seek[channels.pinky_pivot] = -hand_state.pinky_pivot / (0.2 * PI) + 0.1;
+    seek[channels.pinky_pivot] = -hand_state.pinky_pivot / (0.6 * PI) - 0.1;
   }
 
   let {thumb, index, middle, ring, pinky} = hand_state.digits;
 
   if (pinky.valid) {
 
-    seek[channels.pinky_yaw] = pinky.yaw / (0.1 * PI) + 0.3;
+    seek[channels.pinky_yaw] = pinky.yaw / (0.2 * PI) + 0.1;
     seek[channels.pinky_pitch] = -pinky.pitch / (0.6 * PI) + 0.7;
-    seek[channels.pinky_curl] = -pinky.curl / (0.8 * PI) + 0.9;
+    seek[channels.pinky_curl] = -pinky.curl / (0.7 * PI) + 1.0;
 
   }
 
@@ -495,21 +517,21 @@ function update_commands(){
 
     seek[channels.ring_yaw] = ring.yaw / (0.1 * PI) + 0.3;
     seek[channels.ring_pitch] = -ring.pitch / (0.6 * PI) + 0.7;
-    seek[channels.ring_curl] = -ring.curl / (0.8 * PI) + 0.9;
+    seek[channels.ring_curl] = -ring.curl / (0.7 * PI) + 1.0;
 
   }
 
   if (middle.valid) {
 
-    seek[channels.middle_yaw] = middle.yaw / (0.1 * PI) + 0.3;
+    seek[channels.middle_yaw] = middle.yaw / (0.1 * PI) + 0.2;
     seek[channels.middle_pitch] = -middle.pitch / (0.6 * PI) + 0.7;
-    seek[channels.middle_curl] = -middle.curl / (0.8 * PI) + 0.9;
+    seek[channels.middle_curl] = -middle.curl / (0.7 * PI) + 1.0;
 
   }
 
   if (index.valid) {
 
-    seek[channels.index_yaw] = index.yaw / (0.2 * PI) + 0.2;
+    seek[channels.index_yaw] = index.yaw / (0.2 * PI) + 0.5;
     seek[channels.index_pitch] = -index.pitch / (0.6 * PI) + 0.7;
     seek[channels.index_curl] = -index.curl / (0.6 * PI) + 1.2;
 
@@ -517,9 +539,9 @@ function update_commands(){
 
   if (thumb.valid) {
 
-    seek[channels.thumb_yaw] = thumb.yaw / (0.2 * PI) + 0.7;
-    seek[channels.thumb_pitch] = -thumb.pitch / (0.3 * PI) + 0.4;
-    seek[channels.thumb_curl] = -thumb.curl / (0.8 * PI) + 0.9;
+    seek[channels.thumb_yaw] = thumb.yaw / (0.2 * PI) + 0.8;
+    seek[channels.thumb_pitch] = -thumb.pitch / (0.2 * PI) + 0.4;
+    seek[channels.thumb_curl] = -thumb.curl / (0.5 * PI) + 1.0;
 
   }
 
