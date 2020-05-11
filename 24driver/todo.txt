@@ -18,6 +18,7 @@ we can gain significant space? Redo 1 driver unit to check.
 of bus line with some neat vias.
 [ ] Tidy up bulk capacitance.
 [ ] Power plane for the 3V3?
+[ ] Separate channels pins to 3 pin position and 2 pin motor.
 
 
 TODO Code
