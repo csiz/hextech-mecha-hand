@@ -99,7 +99,7 @@ export class MotorDriver {
 
   /* Close driver connection and disable further reconnects. */
   close(){
-    this.disabled = disable;
+    this.disabled = true;
     if (this.socket != null) this.socket.close(1000);
   }
 
@@ -223,7 +223,7 @@ export class MotorDriver {
     this.state = null;
 
     // Immediately start a new connection.
-    this.connect();
+    if (!this.disabled) this.connect();
   }
 
   /* Request the driver to scan for visible wifi access points. */
