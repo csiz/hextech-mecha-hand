@@ -551,10 +551,22 @@ function update_commands(){
 // UI
 // --
 
+// Present connection status.
+driver.onconnecting = () => d3.select("#status").text("Connecting...");
+driver.onconnected = () => d3.select("#status").text("Connected.");
+driver.onclose = () => d3.select("#status").text("Connection closed!");
+
+
+let last_ip = localStorage.getItem("mechahand-url");
+if (last_ip != null) {
+  d3.select("#driver_ip").property("value", last_ip);
+  driver.connect(`ws://${last_ip}/ws`);
+}
+
 d3.select("#driver_connect").on("click", () => {
   let ip = d3.select("#driver_ip").property("value");
-  driver.url = `ws://${ip}/ws`;
-  driver.connect();
+  localStorage.setItem("mechahand-url", ip);
+  driver.connect(`ws://${ip}/ws`);
 });
 
 

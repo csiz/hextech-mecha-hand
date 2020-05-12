@@ -69,7 +69,7 @@ export class MotorDriver {
   /* Continuously command the motors. */
   command() {
     if (this.send_commands_handle != null) return;
-    this.send_commands_handle = setInterval(() => {this.send_commands()}, 100);
+    this.send_commands_handle = setInterval(() => {this.send_commands()}, 50);
   }
 
   /* Release command of the motors. */
@@ -84,29 +84,43 @@ export class MotorDriver {
     }
   }
 
+  /* Stop requesting state updates. */
+  stop_updates() {
+    if (this.request_state_updates_handle != null) {
+      clearInterval(this.request_state_updates_handle);
+      this.request_state_updates_handle = null;
+    }
+  }
+
   /* Send messages only if socket is ready. */
   send(message){
     if (this.socket != null && this.socket.readyState == WebSocket.OPEN) this.socket.send(message);
   }
 
   /* Close driver connection and disable further reconnects. */
-  close(disable = true){
+  close(){
     this.disabled = disable;
     if (this.socket != null) this.socket.close(1000);
   }
 
   /* Check if we received updates and reconnect. */
   check_connection() {
-    if (this.connect_initiated_time == null) return;
+    // Skip teh check if we didn't receive any updates yet. Let the websocket handle it.
+    if (this.state == null) return;
 
-    let last_response_time = this.state == null ? this.connect_initiated_time : this.state.local_time;
-
-    // Close current socket; which will trigger a reconnect.
-    if (Date.now() > last_response_time + this.no_update_timeout) this.close(false);
+    // Reconnct if the last update is stale.
+    if (Date.now() > this.state.local_time + this.no_update_timeout) {
+      console.info("Stale connection; attempting reconnect.");
+      this.reconnect();
+    }
   }
 
   /* Connect to the motor drive and begin requesting state updates. */
-  connect() {
+  connect(url = null) {
+    if (url != null) this.url = url;
+
+    if (this.url == null) throw Error("No URL provided!");
+
     this.connect_initiated_time = Date.now();
 
     let new_socket = new WebSocket(this.url);
@@ -123,30 +137,35 @@ export class MotorDriver {
       // Keep asking for state updates. The cutoff on the chip side is 200ms, so
       // if we ask every 80ms we should always recive updates. The `send` function
       // guards against sending to an uninitialzed/unconnected socket.
-      this.request_state_updates_handle = setInterval(() => {this.request_state_updates()}, 100);
+      this.request_state_updates_handle = setInterval(
+        () => {
+          this.request_state_updates();
+          // Use the update loop to also ensure we're still connected.
+          this.check_connection();
+        },
+        80);
 
 
       this.onconnected();
     };
 
     new_socket.onclose = (event) => {
+      if (event.code != 1000) console.error("Socket closed abnormally.");
+
       // Disable socket.
       this.socket = null;
 
       this.onclose();
 
-      // Immediately attempt to reconnect on the next event loop.
-      if (!this.disabled) setTimeout(this.connect, 0);
+      this.stop_updates();
 
-      if (this.request_state_updates_handle != null) {
-        clearInterval(this.request_state_updates_handle);
-        this.request_state_updates_handle = null;
-      }
+      // Immediately attempt to reconnect on the next event loop.
+      if (!this.disabled) setTimeout(() => this.connect(), 0);
     };
 
-    new_socket.onerror = function (err) {
-      console.error(`Socket error: ${err}`);
-      new_socket.close();
+    new_socket.onerror = (err) => {
+      console.error("Socket error.");
+      this.reconnect();
     };
 
     new_socket.onmessage = async (event) => {
@@ -179,6 +198,32 @@ export class MotorDriver {
           return;
       }
     };
+  }
+
+  /* Reconnect, ignoring previous socket. */
+  reconnect() {
+    // To reconnect fast without waiting for the close handshake, we need to ignore
+    // the already opened socket and move straight to opening a new connection.
+
+    // Stop automatic transmissions.
+    this.stop_updates();
+    this.release();
+
+    // Clear out existing handlers.
+    if (this.socket != null) {
+      this.socket.onopen = () => {};
+      this.socket.onclose = () => {};
+      this.socket.onerror = () => {};
+      this.socket.onmessage = () => {};
+
+      this.socket = null;
+    }
+
+    // Reset the state.
+    this.state = null;
+
+    // Immediately start a new connection.
+    this.connect();
   }
 
   /* Request the driver to scan for visible wifi access points. */
