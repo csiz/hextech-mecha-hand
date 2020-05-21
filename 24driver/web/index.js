@@ -433,6 +433,8 @@ function setup_graphs() {
           .attr("width", width)
           .attr("height", height);
 
+        svg_ps.append("title").text("Position (solid line), Seek (dotted line) and Limits (dashed lines)");
+
         svg_ps.append("line")
           .classed("min-position", true)
           .attr("x1", "0%")
@@ -463,6 +465,8 @@ function setup_graphs() {
           .style("display", "block")
           .attr("width", width)
           .attr("height", height);
+
+        svg_pc.append("title").text("Power (purple) and Current (red)");
 
         svg_pc.append("line")
           .attr("x1", "0%")
