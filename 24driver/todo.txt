@@ -1,31 +1,33 @@
 TODO PCB
 --------
 
-[ ] Switch to DC-DC buck converter for efficiency, maybe https://datasheet.lcsc.com/szlcsc/Texas-Instruments-TI-TPS54331DR_C9865.pdf
+[v] Switch to DC-DC buck converter for efficiency, maybe LM2596-5.0. Although pre-built chip might be cheaper and easier.
 [x] 5V output pin to power secondary chip. Check for power use of gpu system on a chip, like NVIDIA Jetson Nano Developer Kit:
 "If you want to run stressful workloads in the (default) 10W power mode,you should instead use a DC barrel jack power supply (with 5.5mm OD / 2.1mm ID / 9.5mm length, center pin positive) that can supply up to 5V⎓4A."
 [x] Seems hard to find a 4A buck converter, and they'd end up pretty big to supply enough power. This means super chip needs to manage
 input power rails, so we need to ...
-[ ] Expose the power-on pin, after the button & resistance, as input from other device.
-[ ] Just power on from USB, then chip can try to switch to Serial interface, if device on other end ack.
-[ ] Replace 5V with 3V3 analog reference for: position sensors, position sensor reference, motor driver logic high, current sensor reference.
-[ ] Apply manufacturing suggestions.
-[ ] Compactiffy new layout. Not worth making the drives smaller, just ditch joystick and button space. Actually with no 5V line, maybe
-we can gain significant space? Redo 1 driver unit to check.
+[x] Expose the power-on pin, after the button & resistance, as input from other device. No convenient pin to expose so it doesn't clash with the esp or button. Plus we can power from USB.
+[x] Just power on from USB, then chip can try to switch to Serial interface, if device on other end ack. This TODO is for the code.
+[v] Replace 5V with 3V3 analog reference for: position sensors, position sensor reference, motor driver logic high, current sensor reference.
+[v] Apply manufacturing suggestions.
+[v] Compactiffy new layout. Ditch joystick and button space. Use the 3V3 plane. And separate motor and pots.
 [x] Reverse pressure sensor input cable direction.
-[ ] Switch to normal JST headers, instead of 90 degrees bent.
-[ ] Pairs of mirrored drives using a single power line and 16 input bus to minimize spaghetti from led drive. Can also put pull up resistors on top
-of bus line with some neat vias.
-[ ] Tidy up bulk capacitance.
-[ ] Power plane for the 3V3?
-[ ] Separate channels pins to 3 pin position and 2 pin motor.
+[x] Switch to normal JST headers, instead of 90 degrees bent.
+[x] Pairs of mirrored drives using a single power line and 16 input bus to minimize spaghetti from led drive. Can also put pull up resistors on top of bus line with some neat vias.
+[v] Separate channels pins to 3 pin position and 2 pin motor.
+[v] Tidy up bulk capacitance.
+[v] Power plane for the 3V3!
 
 
 TODO Code
 ---------
 
+[ ] Redo current measurement code using MCP3208 chips...
 [ ] Switch to MQTT over websockets? https://github.com/espressif/esp-mqtt https://www.npmjs.com/package/mqtt
 [ ] Switch OLED display to the second processor.
+[ ] Interface via the serial/USB line?
+
+
 
 Done
 ----

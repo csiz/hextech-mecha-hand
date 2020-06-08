@@ -1,33 +1,12 @@
 Project
 -------
 
-[ ] Finish first fully working prototype (with remote hand mimicking).
+[v] Finish first fully working prototype (with remote hand mimicking).
 [ ] Write pending blogposts on modeling, circuit, and mk 4&5 hands.
-[ ] Update PCB with compact design, all 3V3 logic, 5V DC-DC converter (replacing volt reg also leads to 24V rating).
+[v] Update PCB with compact design, all 3V3 logic, 5V DC-DC converter (replacing volt reg also leads to 24V rating).
 [ ] Write bill of materials.
 [ ] Document assembly.
 [ ] Publish first working version.
-
-
-Improvements
-------------
-
-[ ] Sturdier finger covers, maybe screwed on. Make them easier to put on (no inside prongs). Try to cover joints too?
-[ ] Joint potentiometer housing should also have mounting channels for the wires. Was a good idea!
-[ ] Flatten hand design:
-  * Pitch axis further back and almost in-line with yaw.
-  * Fingers yaw pivot on top of abduct. No need for big hole in finger cover.
-  * Bring fingers lower, and cover bottom of pinky/thumb pivots.
-  * Move all cabling above?
-[ ] Housing improvements:
-  * Smaller housing for compacter PCB.
-  * Hand interface as separate piece that screws on the bottom of the main chassis. Easier to screw from below.
-  * Mounting pins from interface to PCB housing.
-[ ] Switch to 12V using 4s LIPO battery, 12V motors and improved PCB (DC-DC buck converter).
-[ ] Better pressure sensor design:
-  * Put gauges on opposite sides, directed so one stretches and one compresses, doubling signal.
-  * Is sensitive enough to put on main structure?
-  * Make sensor easier to build/solder. Maybe individual wire channels? Flatter gluing area.
 
 
 Done
@@ -54,6 +33,29 @@ the main chip shuts down current for the driver chips, we might not need a reset
 [v] Test soldering address pads.
     Tested, it's pretty difficult. Enhanced the solder mask to allow a bridge between the pads.
 [v] Double check current sensor pins are properly upside down.
+
+
+Improvements
+------------
+
+[v] Sturdier finger covers, maybe screwed on. Make them easier to put on (no inside prongs). Try to cover joints too?
+[v] Integrate finger covers as structural outer shell.
+[v] Joint potentiometer housing should also have mounting channels for the wires. Was a good idea!
+[x] Flatten hand design:
+  * Pitch axis further back and in-line with yaw.
+  * Fingers yaw pivot on top of abduct. No need for big hole in finger cover.
+  * Bring fingers lower, and cover bottom of pinky/thumb pivots.
+[v] Compact hand design, with inline tendon wires and inline thumb and pinky pivots.
+[v] Housing improvements:
+  * Smaller housing for compacter PCB.
+  * Hand interface as separate piece that screws on the bottom of the main chassis. Easier to screw from below.
+  * Mounting pins from interface to PCB housing.
+[v] Switch to 12V using 4s LIPO battery, 12V motors and improved PCB (DC-DC buck converter).
+[v] Better pressure sensor design:
+  * Put gauges on opposite sides, directed so one stretches and one compresses, doubling signal.
+  * Is sensitive enough to put on main structure?
+  * Make sensor easier to build/solder. Maybe individual wire channels? Flatter gluing area.
+
 
 Driver Redesign
 ---------------
