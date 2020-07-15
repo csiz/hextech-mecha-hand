@@ -40,8 +40,8 @@ namespace power {
   // Corresponding to the attenuated voltage (note that we still can't exceed 3.3V driving votlage).
   const float ADC_11DB_FULL_SCALE_VOLTAGE = 3.9;
 
-  // The voltage measurement is taken after a voltage divider with 8.2kohm and 2.0kohm resistors.
-  const float VOLTAGE_SCALE = (2.0 + 8.2) / 2.0;
+  // The voltage measurement is taken after a voltage divider with 10kohm and 1.0kohm resistors.
+  const float VOLTAGE_SCALE = (1.0 + 10.0) / 1.0;
 
 
   // We measure the current via the ACS712-20A hall effect sensor. The sensor outputs a voltage
