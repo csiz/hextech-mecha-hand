@@ -10,10 +10,10 @@
   "author": "Calin Mocanu",
   "license": "ISC",
   "dependencies": {
-    "lodash": "^4.17.15",
-    "webpack": "^4.43.0"
+    "lodash": "^4.17.20",
+    "webpack": "^4.44.1"
   },
   "devDependencies": {
-    "webpack-cli": "^3.3.11"
+    "webpack-cli": "^3.3.12"
   }
 }
