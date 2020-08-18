@@ -451,31 +451,31 @@ animate();
 // ------------
 
 let channels = {
-  wrist_roll: 23,
-  wrist_yaw: 19,
-  wrist_pitch: 15,
-  thumb_pivot: 7,
-  pinky_pivot: 11,
+  wrist_roll: 16,
+  wrist_yaw: 12,
+  wrist_pitch: 8,
+  thumb_pivot: 4,
+  pinky_pivot: 0,
 
-  pinky_curl: 4,
-  pinky_pitch: 5,
-  pinky_yaw: 6,
+  pinky_curl: 3,
+  pinky_pitch: 2,
+  pinky_yaw: 1,
 
-  ring_curl: 8,
-  ring_pitch: 9,
-  ring_yaw: 10,
+  ring_curl: 7,
+  ring_pitch: 6,
+  ring_yaw: 5,
 
-  middle_curl: 12,
-  middle_pitch: 13,
-  middle_yaw: 14,
+  middle_curl: 11,
+  middle_pitch: 10,
+  middle_yaw: 9,
 
-  index_curl: 16,
-  index_pitch: 17,
-  index_yaw: 18,
+  index_curl: 15,
+  index_pitch: 14,
+  index_yaw: 13,
 
-  thumb_curl: 20,
-  thumb_pitch: 21,
-  thumb_yaw: 22,
+  thumb_curl: 19,
+  thumb_pitch: 18,
+  thumb_yaw: 17,
 };
 
 
@@ -496,11 +496,11 @@ function update_commands(){
   seek[channels.wrist_pitch] = hand_state.palm_pitch / (0.4 * PI) + 0.5;
 
   if (hand_state.thumb_pivot != null) {
-    seek[channels.thumb_pivot] = hand_state.thumb_pivot / (0.4 * PI) + 0.0;
+    seek[channels.thumb_pivot] = -hand_state.thumb_pivot / (0.25 * PI) + 1.2;
   }
 
   if (hand_state.pinky_pivot != null) {
-    seek[channels.pinky_pivot] = -hand_state.pinky_pivot / (0.6 * PI) - 0.1;
+    seek[channels.pinky_pivot] = hand_state.pinky_pivot / (0.6 * PI) + 1.0;
   }
 
   let {thumb, index, middle, ring, pinky} = hand_state.digits;
@@ -508,42 +508,42 @@ function update_commands(){
   if (pinky.valid) {
 
     seek[channels.pinky_yaw] = pinky.yaw / (0.2 * PI) + 0.1;
-    seek[channels.pinky_pitch] = -pinky.pitch / (0.6 * PI) + 0.7;
-    seek[channels.pinky_curl] = -pinky.curl / (0.7 * PI) + 1.0;
+    seek[channels.pinky_pitch] = pinky.pitch / (0.6 * PI) + 0.3;
+    seek[channels.pinky_curl] = pinky.curl / (0.6 * PI) - 0.1;
 
   }
 
   if (ring.valid) {
 
-    seek[channels.ring_yaw] = ring.yaw / (0.1 * PI) + 0.3;
-    seek[channels.ring_pitch] = -ring.pitch / (0.6 * PI) + 0.7;
-    seek[channels.ring_curl] = -ring.curl / (0.7 * PI) + 1.0;
+    seek[channels.ring_yaw] = ring.yaw / (0.1 * PI) + 0.1;
+    seek[channels.ring_pitch] = ring.pitch / (0.6 * PI) + 0.4;
+    seek[channels.ring_curl] = ring.curl / (0.6 * PI) + 0.0;
 
   }
 
   if (middle.valid) {
 
-    seek[channels.middle_yaw] = middle.yaw / (0.1 * PI) + 0.2;
-    seek[channels.middle_pitch] = -middle.pitch / (0.6 * PI) + 0.7;
-    seek[channels.middle_curl] = -middle.curl / (0.7 * PI) + 1.0;
+    seek[channels.middle_yaw] = middle.yaw / (0.1 * PI) + 0.1;
+    seek[channels.middle_pitch] = middle.pitch / (0.6 * PI) + 0.3;
+    seek[channels.middle_curl] = middle.curl / (0.6 * PI) + 0.0;
 
   }
 
   if (index.valid) {
 
-    seek[channels.index_yaw] = index.yaw / (0.2 * PI) + 0.5;
-    seek[channels.index_pitch] = -index.pitch / (0.6 * PI) + 0.7;
-    seek[channels.index_curl] = -index.curl / (0.6 * PI) + 1.2;
+    seek[channels.index_yaw] = index.yaw / (0.15 * PI) + 0.3;
+    seek[channels.index_pitch] = index.pitch / (0.5 * PI) + 0.5;
+    seek[channels.index_curl] = index.curl / (0.6 * PI) - 0.0;
 
   }
 
-  if (thumb.valid) {
+  // if (thumb.valid) {
 
-    seek[channels.thumb_yaw] = thumb.yaw / (0.2 * PI) + 0.8;
-    seek[channels.thumb_pitch] = -thumb.pitch / (0.2 * PI) + 0.4;
-    seek[channels.thumb_curl] = -thumb.curl / (0.5 * PI) + 1.0;
+  //   seek[channels.thumb_yaw] = thumb.yaw / (0.20 * PI) + 0.9;
+  //   seek[channels.thumb_pitch] = thumb.pitch / (0.2 * PI) + 0.5;
+  //   seek[channels.thumb_curl] = thumb.curl / (0.4 * PI) + 0.3;
 
-  }
+  // }
 
 
 }
