@@ -400,9 +400,12 @@ export class MotorDriver {
   /* Receive current driver configuration. */
   receive_config(data){
     // Ignore if we didn't get the complete message.
-    if (data.byteLength != 817 - 1) return;
+    if (data.byteLength != 1133 - 1) return;
 
     let offset = 0;
+
+    const current_fraction = data.getFloat32(offset);
+    offset += 4;
 
     let motor_channels = [];
     for (let i = 0; i < 24; i++) {
@@ -415,12 +418,20 @@ export class MotorDriver {
       const d_time = data.getFloat32(offset + 18);
       const threshold = data.getFloat32(offset + 22);
       const overshoot_threshold = data.getFloat32(offset + 26);
+      const min_power = data.getFloat32(offset + 30);
+      const max_current = data.getFloat32(offset + 34);
+      const max_avg_current = data.getFloat32(offset + 38);
+      const enabled = Boolean(data.getUint8(offset + 42));
 
-      offset += 30;
+      offset += 43;
 
       motor_channels.push({
+        enabled,
         min_position,
         max_position,
+        min_power,
+        max_current,
+        max_avg_current,
         reverse_output,
         reverse_input,
         p,
@@ -441,6 +452,7 @@ export class MotorDriver {
     }
 
     this.config = {
+      current_fraction,
       motor_channels,
       pressure_channels,
     };
@@ -498,7 +510,7 @@ export class MotorDriver {
     // TODO: configure strain gauges too.
 
     // Build response and send it via websockets.
-    let data = new Uint8Array(818);
+    let data = new Uint8Array(1134);
     let data_view = new DataView(data.buffer);
 
     // Set the function code.
@@ -508,6 +520,9 @@ export class MotorDriver {
     // Set save flag.
     data_view.setUint8(offset, save);
     offset += 1;
+
+    data_view.setFloat32(offset, new_config.current_fraction);
+    offset += 4;
 
     // Set channel configuration.
     let channels = new_config.motor_channels;
@@ -521,7 +536,11 @@ export class MotorDriver {
       data_view.setFloat32(offset + 18, channels[i].d_time);
       data_view.setFloat32(offset + 22, channels[i].threshold);
       data_view.setFloat32(offset + 26, channels[i].overshoot_threshold);
-      offset += 30;
+      data_view.setFloat32(offset + 30, channels[i].min_power);
+      data_view.setFloat32(offset + 34, channels[i].max_current);
+      data_view.setFloat32(offset + 38, channels[i].max_avg_current);
+      data_view.setUint8(offset + 42, channels[i].enabled);
+      offset += 43;
     }
     // Set strain gauge configuration.
     let pressures = new_config.pressure_channels;

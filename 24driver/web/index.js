@@ -84,6 +84,9 @@ function show_config() {
 
   let config = driver.config;
 
+  d3.select("#set-current-fraction").property("value", driver.config.current_fraction.toFixed(2));
+
+
   d3.selectAll("#drivers>div")
   .data(config.motor_channels)
   .each(function (channel) {
@@ -108,6 +111,13 @@ function show_config() {
     div.select("input.set-pid-i").property("value", channel.i_time.toFixed(3));
     div.select("input.set-pid-d").property("value", channel.d_time.toFixed(4));
     div.select("input.set-pid-t").property("value", channel.threshold.toFixed(4));
+
+    div.select("input.set-enabled")
+      .property("checked", channel.enabled);
+
+    div.select("input.set-min-pwm").property("value", channel.min_power.toFixed(2));
+    div.select("input.set-max-cur").property("value", channel.max_current.toFixed(3));
+    div.select("input.set-max-cur-1s").property("value", channel.max_avg_current.toFixed(3));
   });
 }
 
@@ -121,6 +131,8 @@ driver.onconfig = (config) => {
 function send_config(save = false){
   // Don't send anything until the first config is received.
   if (driver.config == null) return;
+
+  driver.config.current_fraction = d3.select("#set-current-fraction").node().value;
 
   // Get the limits from the input fields.
   d3.selectAll("#drivers input.set-min-position")
@@ -161,6 +173,23 @@ function send_config(save = false){
       driver.config.motor_channels[i].overshoot_threshold = 2*parseFloat(this.value);
     });
 
+
+  d3.selectAll("#drivers input.set-enabled")
+    .each(function(_channel, i) {
+      driver.config.motor_channels[i].enabled = Boolean(this.checked);
+    });
+  d3.selectAll("#drivers input.set-min-pwm")
+    .each(function(_channel, i) {
+      driver.config.motor_channels[i].min_power = parseFloat(this.value);
+    });
+  d3.selectAll("#drivers input.set-max-cur")
+    .each(function(_channel, i) {
+      driver.config.motor_channels[i].max_current = parseFloat(this.value);
+    });
+  d3.selectAll("#drivers input.set-max-cur-1s")
+    .each(function(_channel, i) {
+      driver.config.motor_channels[i].max_avg_current = parseFloat(this.value);
+    });
 
   // TODO: configure strain gauges too.
 
@@ -416,7 +445,23 @@ function show_state(){
 // UI setup
 // --------
 
+
 function setup_graphs() {
+  let drivers_current_span = d3.select("#drivers_current")
+
+  drivers_current_span.append("label")
+    .text("Power fraction:");
+
+    drivers_current_span.append("input")
+    .attr("id", "set-current-fraction")
+    .attr("type", "range")
+    .attr("min", "0")
+    .attr("value", "1")
+    .attr("max", "1")
+    .attr("step", "0.1")
+    .on("change", send_config);
+
+
   d3.select("#drivers")
     .selectAll("div")
     .data(motor_channels_indexes)
@@ -426,6 +471,8 @@ function setup_graphs() {
           .style("margin", "5px");
 
         div.append("h4").text(i => `Channel ${i}`);
+
+        // ### State data graphs
 
         let svg_ps = div.append("svg")
           .classed("position-seek", true)
@@ -499,7 +546,9 @@ function setup_graphs() {
           .style("grid-template-columns", "1fr 2fr")
           .style("grid-column-gap", "10px");
 
-        // Power
+
+        // ### Power
+
         inputs_grid.append("label")
           .text("Power:");
 
@@ -519,7 +568,8 @@ function setup_graphs() {
           });
 
 
-        // Seek
+        // ### Seek
+
         let seek_label = inputs_grid.append("label");
 
         seek_label.append("input")
@@ -555,6 +605,9 @@ function setup_graphs() {
 
         inputs_grid.append("span")
           .text("Limits:");
+
+
+        // ### Position limits
 
         let limits_span = inputs_grid.append("span");
 
@@ -606,6 +659,8 @@ function setup_graphs() {
           .on("click", stop_auto_limits);
 
 
+        // ### Input and output directions
+
         inputs_grid.append("span")
           .text("Reverse:");
 
@@ -635,6 +690,8 @@ function setup_graphs() {
         reverse_output_label.append("span")
           .text("output");
 
+
+        // ### PID parameters
 
         let pid_span = inputs_grid.append("span")
           .style("grid-column-start", 1)
@@ -686,6 +743,62 @@ function setup_graphs() {
           .attr("min", "0")
           .attr("max", "0.1")
           .attr("step", "0.01")
+          .style("width", "3em")
+          .on("change", send_config);
+
+
+        // ### Driving current limits
+
+        let force_span = inputs_grid.append("span")
+          .style("grid-column-start", 1)
+          .style("grid-column-end", 3);
+
+
+        let enable_label = force_span.append("label");
+
+        enable_label.append("span")
+          .text("En");
+
+        enable_label.append("input")
+          .classed("set-enabled", true)
+          .attr("id", i => `set-enabled-${i}`)
+          .attr("type", "checkbox")
+          .property("checked", true)
+          .on("change", send_config);
+
+        force_span.append("span").text("P-:");
+
+        force_span.append("input")
+          .classed("set-min-pwm", true)
+          .attr("id", i => `set-min-pwm-${i}`)
+          .attr("type", "number")
+          .attr("min", "0")
+          .attr("max", "1")
+          .attr("step", "0.05")
+          .style("width", "3em")
+          .on("change", send_config);
+
+        force_span.append("span").text("C:");
+
+        force_span.append("input")
+          .classed("set-max-cur", true)
+          .attr("id", i => `set-max-cur-${i}`)
+          .attr("type", "number")
+          .attr("min", "0")
+          .attr("max", "2")
+          .attr("step", "0.1")
+          .style("width", "3em")
+          .on("change", send_config);
+
+        force_span.append("span").text("C 1s:");
+
+        force_span.append("input")
+          .classed("set-max-cur-1s", true)
+          .attr("id", i => `set-max-cur-1s-${i}`)
+          .attr("type", "number")
+          .attr("min", "0")
+          .attr("max", "2")
+          .attr("step", "0.1")
           .style("width", "3em")
           .on("change", send_config);
 

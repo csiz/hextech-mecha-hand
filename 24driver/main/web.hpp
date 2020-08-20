@@ -275,12 +275,15 @@ namespace web {
 
           case CONFIGURE: {
             // Similarly to sending configuration, with 1 extra byte to tell if we should save it.
-            if (len != 818) return;
+            if (len != 1134) return;
 
             const bool save = get_bool(data + offset);
             offset += 1;
 
             using state::state;
+
+            state.current_fraction = get_float32(data + offset);
+            offset += 4;
 
             // Get channel config.
             for (size_t i = 0; i < 24; i++){
@@ -293,7 +296,11 @@ namespace web {
               state.channels[i].pid.d_time = get_float32(data + offset + 18);
               state.channels[i].pid.threshold = get_float32(data + offset + 22);
               state.channels[i].pid.overshoot_threshold = get_float32(data + offset + 26);
-              offset += 30;
+              state.channels[i].min_power = get_float32(data + offset + 30);
+              state.channels[i].max_current = get_float32(data + offset + 34);
+              state.channels[i].max_avg_current = get_float32(data + offset + 38);
+              state.channels[i].enabled = get_bool(data + offset + 42);
+              offset += 43;
             }
 
             // Get strain gauge coefficients.
@@ -477,7 +484,7 @@ namespace web {
     // ----------------
 
     // Build state message.
-    const size_t config_size = 817;
+    const size_t config_size = 1133;
     uint8_t config_msg[config_size] = {};
 
     using state::state;
@@ -485,6 +492,9 @@ namespace web {
     // State message API code.
     config_msg[0] = CONFIGURATION;
     size_t offset = 1;
+
+    set_float32(config_msg + offset, state.current_fraction);
+    offset += 4;
 
     // Send config of each drive channel.
     for (size_t i = 0; i < 24; i++){
@@ -497,7 +507,11 @@ namespace web {
       set_float32(config_msg + offset + 18, state.channels[i].pid.d_time);
       set_float32(config_msg + offset + 22, state.channels[i].pid.threshold);
       set_float32(config_msg + offset + 26, state.channels[i].pid.overshoot_threshold);
-      offset += 30;
+      set_float32(config_msg + offset + 30, state.channels[i].min_power);
+      set_float32(config_msg + offset + 34, state.channels[i].max_current);
+      set_float32(config_msg + offset + 38, state.channels[i].max_avg_current);
+      set_bool(config_msg + offset + 42, state.channels[i].enabled);
+      offset += 43;
     }
 
     // Send strain gauge coefficients.

@@ -63,6 +63,9 @@ const unsigned long min_loop_update_period = 1;
 // Exponentially average all state measurements with 30ms half life.
 const timing::ExponentialAverage state_exp_avg = {0.030};
 
+// Average current use with a 1 second half life.
+const timing::ExponentialAverage current_exp_avg = {1.0};
+
 void setup(){
   // Keep the board turned on before anything else.
   power::setup();
@@ -133,6 +136,9 @@ void loop(){
     // Store smoothed current measurements.
     channel.current = state_exp_avg(currents::current[i], channel.current, elapsed);
 
+    // Store slowly average current measurements.
+    channel.avg_current = current_exp_avg(channel.current, channel.avg_current, elapsed);
+
     // Power per drive channel is a combination seeking and base power.
     float power = channel.power_offset;
 
@@ -144,11 +150,41 @@ void loop(){
       power += channel.pid.update(channel.position, seek, elapsed);
     }
 
-    // Clamp to output range.
-    power = clamp(power, -1.0, +1.0);
+    // Apply minimal power or exactly 0. Between 0 and min power friction overcomes any movement.
+    if (power != 0.0 and std::abs(power) < channel.min_power) {
+      power = power < 0.0 ? -channel.min_power : +channel.min_power;
+    }
+
+    // Compute maximum power. Either 100%, or clamped by current limits.
+    float max_power = +1.0;
+
+    // Use last power setting to compute the max power we can use whilst staying within current specs.
+    if (channel.current > 0.001 and channel.power != 0.0) {
+      // Only if the last setting was not 0, and we use more than a milliamp.
+      max_power = std::min(max_power,
+        std::abs(channel.power) * channel.max_current * state.current_fraction / channel.current);
+    }
+
+    // Same limit, but using the 1 second rolling average of abs power and current.
+    if (channel.avg_current > 0.001 and channel.avg_abs_power != 0.0) {
+      max_power = std::min(max_power,
+        channel.avg_abs_power * channel.max_avg_current * state.current_fraction / channel.avg_current);
+    }
+
+    // Maximum power must be positive.
+    max_power = std::max(0.0f, max_power);
+
+    // Clamp output to maximum 1, or the current limits, whichever is lowest.
+    power = clamp(power, -max_power, +max_power);
+
+
+    // **Only power when enabled!**
+    if (not channel.enabled) power = 0.0;
 
     // Update state power; ignoring direction.
     channel.power = power;
+    // Update the rolling average abs power.
+    channel.avg_abs_power = current_exp_avg(std::abs(power), channel.avg_abs_power, elapsed);
 
     // Set driver power, clampped and potentially inverted.
     drivers::power[i] = channel.reverse_output ? -power : power;

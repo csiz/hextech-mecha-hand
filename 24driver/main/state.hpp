@@ -9,6 +9,8 @@
 namespace state {
 
   struct Channel {
+    // Whether the channel is drivable.
+    bool enabled = true;
     // Position of the potentiometer.
     float position = 0.0;
     // Minimum position reached on reverse power.
@@ -17,8 +19,18 @@ namespace state {
     float max_position = 1.0;
     // Power to send to the motor, -1.0 meaning full reverse to +1.0 meaning full forward.
     float power = 0.0;
+    // Minimum PWM ratio. Anything below won't budge the motor, then no need to apply it.
+    float min_power = 0.2;
     // Current used by motor in amps.
     float current = 0.0;
+    // Instant current cap (in amps).
+    float max_current = 0.4;
+    // Current used (in amps) averaged with a 1 second half life.
+    float avg_current = 0.0;
+    // Average current cap (in amps).
+    float max_avg_current = 0.2;
+    // Keep a 1 second average of power use to be able to limit max current.
+    float avg_abs_power = 0.0;
     // Position to seek, or -1 to disable.
     float seek = -1.0;
     // Power offset in addition to the seek position.
@@ -56,6 +68,9 @@ namespace state {
     float max_loop_duration = 0.0;
     unsigned long update_time = 0.0;
 
+    // Adjustment for all max current levels.
+    float current_fraction = 1.0;
+
     // 24 PID driver channels.
     Channel channels[24];
 
@@ -79,17 +94,31 @@ namespace state {
   void save_state_params () {
     using namespace memory;
 
+    set_float("curr_frac", state.current_fraction);
+
     // Use this array to format keys with the index for each channel.
     char key[max_key];
 
     for (size_t i = 0; i < 24; i++) {
       auto const& channel = state.channels[i];
 
+      snprintf(key, max_key, "c%2d-enabled", i);
+      set_bool(key, channel.enabled);
+
       snprintf(key, max_key, "c%2d-min-pos", i);
       set_float(key, channel.min_position);
 
       snprintf(key, max_key, "c%2d-max-pos", i);
       set_float(key, channel.max_position);
+
+      snprintf(key, max_key, "c%2d-min-pow", i);
+      set_float(key, channel.min_power);
+
+      snprintf(key, max_key, "c%2d-max-cur", i);
+      set_float(key, channel.max_current);
+
+      snprintf(key, max_key, "c%2d-max-avc", i);
+      set_float(key, channel.max_avg_current);
 
       snprintf(key, max_key, "c%2d-rev-out", i);
       set_bool(key, channel.reverse_output);
@@ -121,17 +150,32 @@ namespace state {
   void load_state_params() {
     using namespace memory;
 
+    get_float("curr_frac", state.current_fraction);
+
+
     // Use this array to format keys with the index for each channel.
     char key[max_key];
 
     for (size_t i = 0; i < 24; i++) {
       auto & channel = state.channels[i];
 
+      snprintf(key, max_key, "c%2d-enabled", i);
+      get_bool(key, channel.enabled);
+
       snprintf(key, max_key, "c%2d-min-pos", i);
       get_float(key, channel.min_position);
 
       snprintf(key, max_key, "c%2d-max-pos", i);
       get_float(key, channel.max_position);
+
+      snprintf(key, max_key, "c%2d-min-pow", i);
+      get_float(key, channel.min_power);
+
+      snprintf(key, max_key, "c%2d-max-cur", i);
+      get_float(key, channel.max_current);
+
+      snprintf(key, max_key, "c%2d-max-avc", i);
+      get_float(key, channel.max_avg_current);
 
       snprintf(key, max_key, "c%2d-rev-out", i);
       get_bool(key, channel.reverse_output);

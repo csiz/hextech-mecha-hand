@@ -537,13 +537,13 @@ function update_commands(){
 
   }
 
-  // if (thumb.valid) {
+  if (thumb.valid) {
 
-  //   seek[channels.thumb_yaw] = thumb.yaw / (0.20 * PI) + 0.9;
-  //   seek[channels.thumb_pitch] = thumb.pitch / (0.2 * PI) + 0.5;
-  //   seek[channels.thumb_curl] = thumb.curl / (0.4 * PI) + 0.3;
+    seek[channels.thumb_yaw] = thumb.yaw / (0.20 * PI) + 0.9;
+    seek[channels.thumb_pitch] = thumb.pitch / (0.2 * PI) + 0.5;
+    seek[channels.thumb_curl] = thumb.curl / (0.4 * PI) + 0.3;
 
-  // }
+  }
 
 
 }
