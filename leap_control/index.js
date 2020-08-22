@@ -5,6 +5,7 @@ import * as THREE from "three";
 
 import {MotorDriver, deinterpolate, zero_commands} from "24driver";
 import { local } from "d3";
+import { Vector3 } from "three";
 
 // Hand data
 // ---------
@@ -42,6 +43,7 @@ function make_default_hand_state () {
     // palm's coordinates. The local transform discards the above component to get the local
     // position and orientation of each component.
     local_transform: null,
+    world_transform: null,
 
     arm_world_basis: null,
 
@@ -85,14 +87,24 @@ function signed_angle_on_plane(Va, Vb, plane_normal) {
   return Math.atan2(new THREE.Vector3().crossVectors(Pb, Pa).dot(plane_normal), Pa.dot(Pb));
 }
 
+function plane_normal(Va, Vb) {
+  return new THREE.Vector3().crossVectors(Va, Vb).normalize();
+}
+
 /* Convenince function to extract the basis into 3 vectors. */
 function get_basis_vectors(m4) {
-  let x_axis = new Vector3();
-  let y_axis = new Vector3();
-  let z_axis = new Vector3();
+  let x_axis = new THREE.Vector3();
+  let y_axis = new THREE.Vector3();
+  let z_axis = new THREE.Vector3();
   m4.extractBasis(x_axis, y_axis, z_axis);
   return {x_axis, y_axis, z_axis}
 }
+
+let control_arm = false;
+let forearm_length = 200;
+let shoulder_height = 300;
+let shoulder_offset = -300;
+let shoulder_distance = 400;
 
 function parse_hand_state(leap_state){
   // No hands in view, return invalid state.
@@ -109,8 +121,8 @@ function parse_hand_state(leap_state){
 
   // We'll use the basis of the arm as origin axis.
   const arm_world_basis = new THREE.Matrix4().makeBasis(
-    ...leap_hand.armBasis.map(vec => new THREE.Vector3(...vec))
-  );
+    ...leap_hand.armBasis.map(vec => new THREE.Vector3(...vec)));
+
 
   // Get the position of the wrist, assuming it's aligned with the arm basis.
   const wrist_world_position = new THREE.Vector3(... leap_hand.wrist);
@@ -143,7 +155,7 @@ function parse_hand_state(leap_state){
   // Because the matrix is orthonormal, we can transpose it to get the inverse.
   const arm_local_transform = arm_world_basis.clone().transpose();
 
-  const local_transform = arm_local_transform.clone()
+  let local_transform = arm_local_transform.clone()
     .premultiply(new THREE.Matrix4().makeRotationZ(roll));
 
   // When applying matrix4 the position is set after the rotation. To center the object in
@@ -151,6 +163,34 @@ function parse_hand_state(leap_state){
   local_transform.setPosition(
     wrist_world_position.clone().applyMatrix4(local_transform).negate());
 
+  // Keep a reference to reverse to world coordinates.
+  let world_transform = new THREE.Matrix4().getInverse(local_transform);
+
+  // Arm
+  // ---
+
+  const elbow_world_position = wrist_world_position.clone()
+    .add(get_basis_vectors(arm_world_basis).z_axis.clone().multiplyScalar(forearm_length));
+  const shoulder_world_position = new THREE.Vector3(shoulder_offset, shoulder_height, shoulder_distance);
+
+  let elbow_to_shoulder = new THREE.Vector3().subVectors(shoulder_world_position, elbow_world_position);
+  let elbow_to_wrist = new THREE.Vector3().subVectors(wrist_world_position, elbow_world_position);
+
+  // I'm not sure this is signed properly when over 180 degrees, but the expected value for usual case is around 90 degree bend, which works fine.
+  const elbow_angle = signed_angle_on_plane(elbow_to_wrist, elbow_to_shoulder, plane_normal(elbow_to_shoulder, elbow_to_wrist));
+
+  // Get the twisting of the arm by measuring the angle between vertical and the forearm, in the plane where the arm is perpendicular.
+  const arm_twist = signed_angle_on_plane(elbow_to_wrist, new Vector3(0, 1, 0), elbow_to_shoulder.clone().normalize());
+
+  // Get the tilt of the arm away from the body in plane of the body (forward direction in our coordinates).
+  const arm_tilt = signed_angle_on_plane(elbow_to_shoulder, new Vector3(0, 1, 0), new Vector3(0, 0, 1));
+
+  // Get the arm pivot angle. How far the arm is streched in front in the plane cutting the body in half.
+  const arm_pivot = signed_angle_on_plane(elbow_to_shoulder, new Vector3(0, 1, 0), new Vector3(1, 0, 0));
+
+
+  // Wrist and fingers
+  // -----------------
 
   const wrist_position = wrist_world_position.clone().applyMatrix4(local_transform);
   const arm_basis = arm_world_basis.clone().premultiply(local_transform);
@@ -259,6 +299,15 @@ function parse_hand_state(leap_state){
     valid: true,
     leap_hand_id,
     local_transform,
+    world_transform,
+
+    elbow_world_position,
+    shoulder_world_position,
+    elbow_angle,
+    arm_twist,
+    arm_tilt,
+    arm_pivot,
+
     arm_world_basis,
     arm_basis,
     wrist_position,
@@ -342,8 +391,13 @@ const width = 1280;
 const height = 720;
 const ratio = width / height;
 
-const camera_size = 500;
-let camera = new THREE.OrthographicCamera(-0.5*ratio*camera_size, +0.5*ratio*camera_size, +0.5*camera_size, -0.5*camera_size, 0.0, 5000);
+// const camera_size = 500;
+// let camera = new THREE.OrthographicCamera(-0.5*ratio*camera_size, +0.5*ratio*camera_size, +0.5*camera_size, -0.5*camera_size, 0.0, 5000);
+let camera = new THREE.PerspectiveCamera(60, ratio, 1, 5000);
+camera.position.z = 600;
+camera.position.y = 800;
+camera.lookAt(0, 100, 0);
+
 
 let renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
 renderer.setSize(width, height);
@@ -367,61 +421,88 @@ function make_edgy_cube(w, h, d, color, edge_color) {
   let cube_edges = new THREE.LineSegments(cube_edges_geometry, cube_edges_material);
   cube_edges.renderOrder = 1;
 
-  return {cube, cube_edges};
+  cube.add(cube_edges);
+  return cube;
 };
 
-let {cube: palm_cube, cube_edges: palm_cube_edges} = make_edgy_cube(40, 5, 40, "orangered", edge_color);
-scene.add(palm_cube);
-palm_cube.add(palm_cube_edges);
+function make_edgy_sphere(r, color, edge_color) {
+  let sphere_geometry = new THREE.SphereGeometry(r, 16, 16);
+  let sphere_material = new THREE.MeshBasicMaterial({color});
+  let sphere = new THREE.Mesh(sphere_geometry, sphere_material);
+
+  let sphere_edges_geometry = new THREE.EdgesGeometry(sphere_geometry);
+  let sphere_edges_material = new THREE.LineBasicMaterial({color: edge_color});
+  let sphere_edges = new THREE.LineSegments(sphere_edges_geometry, sphere_edges_material);
+  sphere_edges.renderOrder = 1;
+
+  sphere.add(sphere_edges);
+
+  return sphere;
+}
+
+var hand_model = new THREE.Object3D();
+hand_model.matrixAutoUpdate = false;
+scene.add(hand_model);
+
+let palm_cube = make_edgy_cube(40, 5, 40, "orangered", edge_color);
+hand_model.add(palm_cube);
 
 
-let {cube: wrist_cube, cube_edges: wrist_cube_edges} = make_edgy_cube(20, 20, 10, "orangered", edge_color);
-scene.add(wrist_cube);
-wrist_cube.add(wrist_cube_edges);
+let wrist_cube = make_edgy_cube(20, 20, 10, "orangered", edge_color);
+hand_model.add(wrist_cube);
 
 
 let digit_models = ["thumb", "index", "middle", "ring", "pinky"].map(digit_name => {
 
-  let {cube: knuckle_cube, cube_edges: knuckle_cube_edges} = make_edgy_cube(20, 20, 20, main_color, edge_color);
-  scene.add(knuckle_cube);
-  knuckle_cube.add(knuckle_cube_edges);
+  let knuckle_cube = make_edgy_cube(20, 20, 20, main_color, edge_color);
+  hand_model.add(knuckle_cube);
 
-  let {cube: curl_cube, cube_edges: curl_cube_edges} = make_edgy_cube(20, 20, 20, main_color, edge_color);
-  scene.add(curl_cube);
-  curl_cube.add(curl_cube_edges);
+  let curl_cube = make_edgy_cube(20, 20, 20, main_color, edge_color);
+  hand_model.add(curl_cube);
 
-  let {cube: distal_cube, cube_edges: distal_cube_edges} = make_edgy_cube(10, 10, 10, main_color, edge_color);
-  scene.add(distal_cube);
-  distal_cube.add(distal_cube_edges);
+  let distal_cube = make_edgy_cube(10, 10, 10, main_color, edge_color);
+  hand_model.add(distal_cube);
 
-  let {cube: tip_cube, cube_edges: tip_cube_edges} = make_edgy_cube(20, 20, 20, main_color, edge_color);
-  scene.add(tip_cube);
-  tip_cube.add(tip_cube_edges);
+  let tip_cube = make_edgy_cube(20, 20, 20, main_color, edge_color);
+  hand_model.add(tip_cube);
 
   return {
     name: digit_name,
-    knuckle_cube, knuckle_cube_edges,
-    curl_cube, curl_cube_edges,
-    distal_cube, distal_cube_edges,
-    tip_cube, tip_cube_edges,
+    knuckle_cube,
+    curl_cube,
+    distal_cube,
+    tip_cube,
   };
 });
 
-camera.position.z = 500;
-camera.position.y = 300;
-camera.lookAt(0, 100, 0);
+var arm_model = new THREE.Object3D();
+arm_model.matrixAutoUpdate = false;
+scene.add(arm_model);
 
+let elbow_sphere = make_edgy_sphere(20, "orangered", edge_color);
+arm_model.add(elbow_sphere);
+let shoulder_sphere = make_edgy_sphere(20, "grey", edge_color)
+arm_model.add(shoulder_sphere);
+
+
+
+// Animation loop
+// --------------
 
 let animate = () => {
   requestAnimationFrame(animate);
 
   if (hand_state.valid) {
+    // Set palm positions.
+    hand_model.visible = true;
+
     palm_cube.position.copy(hand_state.palm_position);
     palm_cube.quaternion.setFromRotationMatrix(hand_state.palm_basis);
 
     wrist_cube.position.copy(hand_state.wrist_position);
     wrist_cube.quaternion.setFromRotationMatrix(hand_state.arm_basis);
 
+    // Set finger positions.
     for (let digit_model of digit_models) {
       let digit_state = hand_state.digits[digit_model.name];
       if (digit_state.valid) {
@@ -438,7 +519,30 @@ let animate = () => {
         digit_model.tip_cube.quaternion.setFromRotationMatrix(digit_state.distal_basis);
       }
     }
+
+    // If controlling the arm, set the arm positions.
+    if (control_arm) {
+      // If we control the whole arm, switch to world positioning.
+      hand_model.matrix.copy(hand_state.world_transform);
+      arm_model.visible = true;
+
+
+      elbow_sphere.position.copy(hand_state.elbow_world_position);
+      shoulder_sphere.position.copy(hand_state.shoulder_world_position);
+
+
+    } else {
+      // If only controlling the hand, fix the wrist to the center of the scene.
+      hand_model.matrix.identity();
+      arm_model.visible = false;
+    }
+
+  } else {
+    hand_model.visible = false;
+    arm_model.visible = false;
   }
+
+
 
   renderer.render(scene, camera);
 };
@@ -476,6 +580,11 @@ let channels = {
   thumb_curl: 19,
   thumb_pitch: 18,
   thumb_yaw: 17,
+
+  elbow_bend: 20,
+  arm_twist: 21,
+  arm_front: 22,
+  arm_back: 23,
 };
 
 
@@ -546,12 +655,17 @@ function update_commands(){
   }
 
 
+
+  if (control_arm) {
+    // TODO: ...
+  }
+
 }
 
 // UI
 // --
 
-// Present connection status.
+// ### Present connection status.
 driver.onconnecting = () => d3.select("#status").text("Connecting...");
 driver.onconnected = () => d3.select("#status").text("Connected.");
 driver.onclose = () => d3.select("#status").text("Connection closed!");
@@ -569,6 +683,84 @@ d3.select("#driver_connect").on("click", () => {
   driver.connect(`ws://${ip}/ws`);
 });
 
+
+// ### Arm control settings
+
+function set_arm_control(enabled){
+  control_arm = enabled;
+  d3.select("#forearm-length").property("disabled", !enabled);
+  d3.select("#shoulder-height").property("disabled", !enabled);
+  d3.select("#shoulder-offset").property("disabled", !enabled);
+  d3.select("#shoulder-distance").property("disabled", !enabled);
+}
+
+let last_control_arm = localStorage.getItem("control-arm");
+if (last_control_arm != null) {
+  let enabled = JSON.parse(last_control_arm);
+  d3.select("#control-arm").property("checked", enabled);
+  set_arm_control(enabled);
+} else {
+  set_arm_control(false);
+}
+
+d3.select("#control-arm").on("change", ()=> {
+  let enabled = d3.select("#control-arm").property("checked");
+  localStorage.setItem("control-arm", JSON.stringify(enabled));
+  set_arm_control(enabled);
+})
+
+let last_forearm_length = localStorage.getItem("forearm-length");
+if (last_forearm_length != null) forearm_length = JSON.parse(last_forearm_length);
+d3.select("#forearm-length-no").text(`${forearm_length}mm`);
+
+d3.select("#forearm-length")
+  .property("value", forearm_length)
+  .on("change", function(){
+    forearm_length = this.value;
+    d3.select("#forearm-length-no").text(`${forearm_length}mm`);
+    localStorage.setItem("forearm-length", JSON.stringify(forearm_length));
+  });
+
+
+let last_shoulder_height = localStorage.getItem("shoulder-height");
+if (last_shoulder_height != null) shoulder_height = JSON.parse(last_shoulder_height);
+d3.select("#shoulder-height-no").text(`${shoulder_height}mm`);
+
+d3.select("#shoulder-height")
+  .property("value", shoulder_height)
+  .on("change", function(){
+    shoulder_height = this.value;
+    d3.select("#shoulder-height-no").text(`${shoulder_height}mm`);
+    localStorage.setItem("shoulder-height", JSON.stringify(shoulder_height));
+  });
+
+let last_shoulder_offset = localStorage.getItem("shoulder-offset");
+if (last_shoulder_offset != null) shoulder_offset = JSON.parse(last_shoulder_offset);
+d3.select("#shoulder-offset-no").text(`${shoulder_offset}mm`);
+
+d3.select("#shoulder-offset")
+  .property("value", shoulder_offset)
+  .on("change", function(){
+    shoulder_offset = this.value;
+    d3.select("#shoulder-offset-no").text(`${shoulder_offset}mm`);
+    localStorage.setItem("shoulder-offset", JSON.stringify(shoulder_offset));
+  });
+
+
+let last_shoulder_distance = localStorage.getItem("shoulder-distance");
+if (last_shoulder_distance != null) shoulder_distance = JSON.parse(last_shoulder_distance);
+d3.select("#shoulder-distance-no").text(`${shoulder_distance}mm`);
+
+d3.select("#shoulder-distance")
+  .property("value", shoulder_distance)
+  .on("change", function(){
+    shoulder_distance = this.value;
+    d3.select("#shoulder-distance-no").text(`${shoulder_distance}mm`);
+    localStorage.setItem("shoulder-distance", JSON.stringify(shoulder_distance));
+  });
+
+
+// ### Remote commands
 
 d3.select("body")
   .on("keydown", () => {
@@ -589,6 +781,7 @@ function degrees(radians){
   return (radians * 180 / Math.PI).toFixed(0);
 }
 
+// ### Remote state
 
 function get_info(channel) {
   // Get the command we're about to send.
@@ -652,6 +845,11 @@ function show_joint_info(){
     ["Thumb Yaw", degrees(thumb.yaw), ...get_info(channels.thumb_yaw)],
     ["Thumb Pitch", degrees(thumb.pitch), ...get_info(channels.thumb_pitch)],
     ["Thumb Curl", degrees(thumb.curl), ...get_info(channels.thumb_curl)],
+
+    ["Elbow bend", degrees(hand_state.elbow_angle), ... get_info(channels.elbow_bend)],
+    ["Arm twist", degrees(hand_state.arm_twist), ... get_info(channels.arm_twist)],
+    ["Arm tilt/front gear", degrees(hand_state.arm_tilt), ... get_info(channels.arm_front)],
+    ["Arm pivot/back gear", degrees(hand_state.arm_pivot), ... get_info(channels.arm_back)],
   ];
 
   d3.select("#joint_info")
