@@ -201,8 +201,4 @@ namespace state {
 
     // TODO: load gauges configs.
   }
-
-  void setup(){
-    load_state_params();
-  }
 }

@@ -5,6 +5,7 @@
 #include "memory.hpp"
 #include "state.hpp"
 #include "pid.hpp"
+#include "power.hpp"
 
 
 #include "freertos/queue.h"
@@ -55,6 +56,7 @@ namespace web {
     REQUEST_STATE_UPDATES = 0x07, // Register for state updates.
     REQUEST_CONFIGURATION = 0x08, // Ask for configuration.
     RELOAD_CONFIGURATION = 0x09, // Reload and ask for configuration.
+
   };
 
   const size_t max_length = 256;
@@ -275,10 +277,13 @@ namespace web {
 
           case CONFIGURE: {
             // Similarly to sending configuration, with 1 extra byte to tell if we should save it.
-            if (len != 1134) return;
+            if (len != 1138) return;
 
             const bool save = get_bool(data + offset);
             offset += 1;
+
+            power::min_battery_voltage = get_float32(data + offset);
+            offset += 4;
 
             using state::state;
 
@@ -484,7 +489,7 @@ namespace web {
     // ----------------
 
     // Build state message.
-    const size_t config_size = 1133;
+    const size_t config_size = 1137;
     uint8_t config_msg[config_size] = {};
 
     using state::state;
@@ -492,6 +497,9 @@ namespace web {
     // State message API code.
     config_msg[0] = CONFIGURATION;
     size_t offset = 1;
+
+    set_float32(config_msg + offset, power::min_battery_voltage);
+    offset += 4;
 
     set_float32(config_msg + offset, state.current_fraction);
     offset += 4;
@@ -564,8 +572,6 @@ namespace web {
   void setup_on_web_core(void * arg);
 
   void setup(){
-    // Get wifi settings from memory at startup; at the moment this is the only way to switch routers.
-    load_wifi_settings();
 
     // Mount SPIFFS but don't format if it fails (default behaviour).
     if (not SPIFFS.begin()) return;
@@ -672,6 +678,7 @@ namespace web {
     // Reload configuration if needed.
     if (reload_config) {
       state::load_state_params();
+      power::load_power_limits();
       reload_config = false;
       save_config = false;
     }
@@ -680,6 +687,7 @@ namespace web {
     // Save configuration if needed.
     if (save_config) {
       state::save_state_params();
+      power::save_power_limits();
       save_config = false;
     }
   }

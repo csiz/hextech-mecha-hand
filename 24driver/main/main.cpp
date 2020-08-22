@@ -84,11 +84,15 @@ void setup(){
   positions::setup();
   strains::setup();
 
-  // Setup internal memory, used by web and state.
+  // Setup internal memory.
   memory::setup();
+  // Get the battery limits.
+  power::load_power_limits();
+  // Load driver configuration.
+  state::load_state_params();
+  // Get wifi settings from memory at startup; at the moment this is the only way to switch routers.
+  web::load_wifi_settings();
 
-  // Load state params into memory.
-  state::setup();
 
   // Start webserver and its loop (they're configured to run in core 0).
   web::setup();

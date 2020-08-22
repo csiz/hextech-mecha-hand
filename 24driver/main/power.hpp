@@ -5,18 +5,20 @@
 #include "Arduino.h"
 #include "esp_adc_cal.h"
 
+#include "memory.hpp"
+
 
 namespace power {
 
 
   // 2 series LiPo cell recommended battery cutoff + 0.1V leeway.
-  const float min_battery_voltage = 6.7;
+  float min_battery_voltage = 6.5;
 
   // Time of the last nominal voltage (millis).
   unsigned long last_nominal_voltage_time = 0;
 
-  // Warn of low voltage for 3 seconds.
-  const unsigned long low_voltage_warn_duration = 3000;
+  // Warn of low voltage for 5 seconds.
+  const unsigned long low_voltage_warn_duration = 5000;
 
   // Voltage and current values.
   uint16_t raw_voltage = 0;
@@ -62,6 +64,7 @@ namespace power {
   esp_adc_cal_characteristics_t calibration;
 
 
+  volatile float power_button_voltage = 0.0;
 
   // Store the last time the power button was pressed so we can turn off
   // on a long press.
@@ -85,11 +88,13 @@ namespace power {
     }
   }
 
+  void save_power_limits () {
+    memory::set_float("min_batt", min_battery_voltage);
+  }
 
-  void setup() {
-    // Initialize the power pins.
-    pinMode(POWER_BTN, INPUT_PULLDOWN);
-    pinMode(POWER_CTRL, OUTPUT);
+  void load_power_limits() {
+    memory::get_float("min_batt", min_battery_voltage);
+  }
 
 
 

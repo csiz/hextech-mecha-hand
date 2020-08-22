@@ -400,9 +400,12 @@ export class MotorDriver {
   /* Receive current driver configuration. */
   receive_config(data){
     // Ignore if we didn't get the complete message.
-    if (data.byteLength != 1133 - 1) return;
+    if (data.byteLength != 1137 - 1) return;
 
     let offset = 0;
+
+    const min_battery_voltage = data.getFloat32(offset);
+    offset += 4;
 
     const current_fraction = data.getFloat32(offset);
     offset += 4;
@@ -453,6 +456,7 @@ export class MotorDriver {
 
     this.config = {
       current_fraction,
+      min_battery_voltage,
       motor_channels,
       pressure_channels,
     };
@@ -510,7 +514,7 @@ export class MotorDriver {
     // TODO: configure strain gauges too.
 
     // Build response and send it via websockets.
-    let data = new Uint8Array(1134);
+    let data = new Uint8Array(1138);
     let data_view = new DataView(data.buffer);
 
     // Set the function code.
@@ -520,6 +524,9 @@ export class MotorDriver {
     // Set save flag.
     data_view.setUint8(offset, save);
     offset += 1;
+
+    data_view.setFloat32(offset, new_config.min_battery_voltage);
+    offset += 4;
 
     data_view.setFloat32(offset, new_config.current_fraction);
     offset += 4;

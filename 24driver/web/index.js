@@ -85,6 +85,7 @@ function show_config() {
   let config = driver.config;
 
   d3.select("#set-current-fraction").property("value", driver.config.current_fraction.toFixed(2));
+  d3.select("#set-min-battery-voltage").property("value", driver.config.min_battery_voltage.toFixed(1));
 
 
   d3.selectAll("#drivers>div")
@@ -132,7 +133,8 @@ function send_config(save = false){
   // Don't send anything until the first config is received.
   if (driver.config == null) return;
 
-  driver.config.current_fraction = d3.select("#set-current-fraction").node().value;
+  driver.config.current_fraction = parseFloat(d3.select("#set-current-fraction").node().value);
+  driver.config.min_battery_voltage = parseFloat(d3.select("#set-min-battery-voltage").node().value);
 
   // Get the limits from the input fields.
   d3.selectAll("#drivers input.set-min-position")
@@ -410,6 +412,8 @@ function show_state(){
 
 
   // TODO: show power and timing info
+  d3.select("#voltage").text(`Current voltage: ${driver.state.voltage.toFixed(1)}V`);
+
   d3.selectAll("#drivers>div")
     .data(motor_channels_indexes)
     .each(function (i) {
@@ -447,12 +451,13 @@ function show_state(){
 
 
 function setup_graphs() {
-  let drivers_current_span = d3.select("#drivers_current")
+  // ### Power settings UI
+  let drivers_current_span = d3.select("#drivers-current");
 
   drivers_current_span.append("label")
     .text("Power fraction:");
 
-    drivers_current_span.append("input")
+  drivers_current_span.append("input")
     .attr("id", "set-current-fraction")
     .attr("type", "range")
     .attr("min", "0")
@@ -461,7 +466,28 @@ function setup_graphs() {
     .attr("step", "0.1")
     .on("change", send_config);
 
+  let min_battery_voltage_span = d3.select("#min-battery-voltage");
+  min_battery_voltage_span.append("label")
+    .text("Min Battery Voltage:");
 
+  min_battery_voltage_span.append("input")
+    .attr("id", "set-min-battery-voltage")
+    .attr("list", "voltage-options")
+    .attr("type", "number")
+    .on("change", send_config);
+
+  min_battery_voltage_span.append("datalist")
+    .attr("id", "voltage-options")
+    .selectAll("option")
+    .data([6.5, 9.7, 12.9, 16.1, 19.3])
+    .join(enter =>{
+      enter.append("option")
+        .attr("value", v => `${v}`)
+        .attr("label", (v, i) => `${i+1}S at ${v}V`);
+    });
+
+
+  // ### Drive channels UI
   d3.select("#drivers")
     .selectAll("div")
     .data(motor_channels_indexes)
@@ -842,7 +868,7 @@ function setup_graphs() {
       .on("click", () => {
         driver.config = null;
         d3.select("#save-config").property("disabled", true);
-        reload_config();
+        driver.reload_config();
       });
 }
 
