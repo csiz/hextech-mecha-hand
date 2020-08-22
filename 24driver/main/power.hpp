@@ -70,14 +70,18 @@ namespace power {
     power_last_press = millis();
   }
 
-  void turnoff(){
+  void turn_off(){
     digitalWrite(POWER_CTRL, LOW);
   }
 
+  void turn_on() {
+    digitalWrite(POWER_CTRL, HIGH);
+  }
+
   void shutdown_on_long_press(){
-    // Power management; if power button has been held for 1 second, turn off.
-    if (digitalRead(POWER_BTN) and millis() - power_last_press > 1000) {
-      turnoff();
+    // Power management; if power button has been held for 3 second, turn off.
+    if (power_button_voltage > 3.0 and ((millis() - power_last_press) > 3000)) {
+      turn_off();
     }
   }
 
@@ -87,13 +91,12 @@ namespace power {
     pinMode(POWER_BTN, INPUT_PULLDOWN);
     pinMode(POWER_CTRL, OUTPUT);
 
-    // Turn the power supply mosfet on; if the power button is being pressed.
-    if (digitalRead(POWER_BTN) == HIGH) digitalWrite(POWER_CTRL, HIGH);
-    else turnoff();
 
-    // Use the power button to shut off if held down.
-    attachInterrupt(POWER_BTN, power_button_interrupt, RISING);
 
+  void setup() {
+    // Initialize the pin and turn the main mosfet on at startup.
+    pinMode(POWER_CTRL, OUTPUT);
+    turn_on();
 
     // Initialize power measuring pins.
     pinMode(VOLTAGE_IN, ANALOG);
@@ -104,13 +107,33 @@ namespace power {
     adcAttachPin(CURRENT_IN);
     analogSetPinAttenuation(CURRENT_IN, ADC_11db); // Full scale range of 3.9V
 
+    // Initialize the power button pin.
+    pinMode(POWER_BTN, ANALOG);
+    adcAttachPin(POWER_BTN);
+    analogSetPinAttenuation(POWER_BTN, ADC_11db); // Full scale range of 3.9V
+
+    // Use the power button to shut off if held down.
+    attachInterrupt(POWER_BTN, power_button_interrupt, RISING);
+
 
     // Populate the calibration struct.
     esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_11db, ADC_WIDTH_12Bit, DEFAULT_VREF, &calibration);
+
+    // Assume we're nominal on startup.
+    last_nominal_voltage_time = millis();
+    // We started the system with the power button pressed. If we don't reset this it might
+    // set-off the shutdown sequence on the first loop.
+    power_last_press = millis();
   }
 
   void update() {
-    shutdown_on_long_press();
+    // Potential mistake in circuit, read the voltage on the power button pin.
+    power_button_voltage = 0.001 * esp_adc_cal_raw_to_voltage(analogRead(POWER_BTN), &calibration);
+    // Nope, diode burnt to a closed circuit so the button always appears pressed... Need solution
+    // to charge capacitor bank without burning the diode.
+    // shutdown_on_long_press();
+
+
     // Update power usage.
 
     // We'll use the function provided to help calibration. Especially helpful since
@@ -134,7 +157,7 @@ namespace power {
     if (low_battery()) {
       // Shutdown the ESP32 if we're past the warning duration on low power!
       if (millis() - last_nominal_voltage_time > low_voltage_warn_duration) {
-        turnoff();
+        turn_off();
       }
     } else {
       // We're not running on low power, so keep nominal voltage time up to date.
