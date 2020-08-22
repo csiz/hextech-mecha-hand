@@ -1,6 +1,22 @@
 TODO PCB
 --------
 
+[x] Dammit! Use a pulldown for the base of the power button transistor. The backvoltage from the diode turns it on...
+[ ] Nope, it's a fried diode, and welded button. Both caused by lots of current charging the capacitor bank. Hmm.
+
+TODO Code
+---------
+
+[v] Redo current measurement code using MCP3208 chips...
+[ ] Switch to MQTT over websockets? https://github.com/espressif/esp-mqtt https://www.npmjs.com/package/mqtt
+[ ] Switch OLED display to the second processor.
+[ ] Interface via the serial/USB line?
+
+
+
+Done
+----
+
 [v] Switch to DC-DC buck converter for efficiency, maybe LM2596-5.0. Although pre-built chip might be cheaper and easier.
 [x] 5V output pin to power secondary chip. Check for power use of gpu system on a chip, like NVIDIA Jetson Nano Developer Kit:
 "If you want to run stressful workloads in the (default) 10W power mode,you should instead use a DC barrel jack power supply (with 5.5mm OD / 2.1mm ID / 9.5mm length, center pin positive) that can supply up to 5V⎓4A."
@@ -17,20 +33,6 @@ input power rails, so we need to ...
 [v] Separate channels pins to 3 pin position and 2 pin motor.
 [v] Tidy up bulk capacitance.
 [v] Power plane for the 3V3!
-
-
-TODO Code
----------
-
-[v] Redo current measurement code using MCP3208 chips...
-[ ] Switch to MQTT over websockets? https://github.com/espressif/esp-mqtt https://www.npmjs.com/package/mqtt
-[ ] Switch OLED display to the second processor.
-[ ] Interface via the serial/USB line?
-
-
-
-Done
-----
 
 [v] Ditch joystick and buttons; expose remaining pins.
 [v] Adjust resistance for the motor LED. Green is stronger than orange, put higher resistance for green.

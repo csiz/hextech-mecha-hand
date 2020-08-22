@@ -97,7 +97,7 @@ namespace ui {
     // Fourth line shows power information.
     if (power::low_battery()){
       // Warn if shutting down due to low battery power.
-      snprintf(line, max_chars, "%.1fV < %.1fV Power off", state.voltage, power::min_battery_voltage);
+      snprintf(line, max_chars, "%.1fV < %.1fV Power off", power::voltage, power::min_battery_voltage);
     } else {
       // Normal mode operation shows more energy use info.
       snprintf(line, max_chars, "%.1fV %.3fA %.1fJ", state.voltage, state.current, state.energy);
