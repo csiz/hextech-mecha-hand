@@ -10,6 +10,7 @@ M3 250pcs 6/8/10/12/16mm               | 1        | 1              | 12         
 6mm split rings double loop            | 40       | 200            | 5.6         | 0.03       | 1.1     | Need rings to tie and tension the finger tendons, expect loses.     | https://www.amazon.com/gp/product/B083JXLYK5
 25 lb monofilament fishing line        | 0.2      | 1              | 7.5         | 7.5        | 1.5     | Monofilament important! Some tendons need to stretch. 20-30 lb ok.  | https://www.amazon.com/gp/product/B00ARHUIJ4
 50 lb braided fishing lines            | 0.2      | 1              | 10          | 10         | 2       | Need strong, stiffer, thinner wire for tendons. Under 0.4 mm dia!   | https://www.amazon.com/gp/product/B01LYFMOBY
+PTFE bowden tube 5ft 2mm ID x 4mm OD   | 0.5      | 1              | 7           | 3.5        | 3.5     | 2mm x 4mm is the most common, but also sweet spot for flex/stiff.   | https://www.amazon.com/gp/product/B073RDFTDV
 Resistive strain gauge BF350-3AA       | 20       | 50             | 19          | 0.38       | 7.6     | Strictly need 12, but expect to damage some; or many on first try.  | https://www.amazon.com/gp/product/B07G42QW2S
 GA12-N20 DC12V micro gear motor 100RPM | 22       | 22             | 57          | 2.59       | 57      | Might damage gears in some motors, get 2 spare.                     | https://www.aliexpress.com/item/4000274747864.html
 RDC503051A Rotary position sensor 10K  | 20       | 40             | 40          | 1          | 20      | Much cheaper in large batches.                                      | https://www.mouser.com/ProductDetail/Alps-Alpine/RDC503051A?qs=j%252B1pi9TdxUY%2FAK%2Fo1fNF6g%3D%3D
@@ -31,7 +32,9 @@ LM2596 DC-DC buck converter 45x21mm    | 1        | 10             | 14         
 2200uF 25V 13x21mm aluminium capacitor | 0        | 10             | 2.6         | 0.3        | 0       | Skip! Problem with start-up circuit will fry diode and weld button. | https://www.aliexpress.com/item/32885108458.html
 24Drive PCB and SMT assembly by jlcpcb | 1        | 5              | 310         | 62         | 62      | Automatic assembly strongly recommended! Can order batch of 2.      | https://jlcpcb.com
 
-Amortized total: $299 ($237 components + $62 pcb).
-Single hand total: $599 ($406 component batches + $193 batch of 2 pcb).
+
+Amortized total: $302 ($240 components + $62 pcb).
+
+Single hand total: $603 ($413 component batches + $190 batch of 2 pcb).
 
 

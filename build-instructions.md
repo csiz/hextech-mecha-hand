@@ -15,6 +15,7 @@ You should also prepare the following tools, and know how to use them:
 * 3D printer. Components are designed to be printed with 0.4mm nozzle FDM printer. Resin printers should also work.
 * Soldering iron, solder, flux, and bronze sponge. Position encoders are embedded in plastic and soldered in place, practice fast soldering.
 * Voltmeter. Need to test all connections after soldering, especially the strain gauges.
+* LiPo charger and preferably a LiPo fireproof safe.
 * Pliers, cutters, and tweezers. Multiple types of pliers recommended; flat for placing parts, round for handling wires, sharp for cutting tough nylon braid.
 * Screwdriver or hex key with M3 head. Preferably a motorized screwdriver, there's going to be a lot of screwing.
 * Crimping tool.
