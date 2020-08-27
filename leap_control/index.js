@@ -599,8 +599,8 @@ function update_commands(){
   const PI = Math.PI;
   let seek = driver.commands.seek;
 
-
-  seek[channels.wrist_roll] = -hand_state.palm_roll / (0.8 * PI) + 0.5;
+  // The hand is mounted sideways on the arm, so add some compesation roll.
+  seek[channels.wrist_roll] = -hand_state.palm_roll / (0.8 * PI) + 0.5 - (control_arm ? 0.3 : 0.0);
   seek[channels.wrist_yaw] = hand_state.palm_yaw / (0.3 * PI) + 0.3;
   seek[channels.wrist_pitch] = hand_state.palm_pitch / (0.4 * PI) + 0.5;
 
@@ -657,7 +657,12 @@ function update_commands(){
 
 
   if (control_arm) {
-    // TODO: ...
+    seek[channels.elbow_bend] = -hand_state.elbow_angle / (0.7 * PI) + 1.6;
+    seek[channels.arm_twist] = -hand_state.arm_twist / (0.9 * PI) + 1.0;
+
+    seek[channels.arm_front] = hand_state.arm_tilt / (0.4 * PI) - hand_state.arm_pivot / (0.5 * PI) + 0.2;
+    seek[channels.arm_back] = hand_state.arm_tilt / (0.4 * PI) + hand_state.arm_pivot / (0.5 * PI) - 0.3;
+
   }
 
 }
