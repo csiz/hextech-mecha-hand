@@ -1,0 +1,12 @@
+Improvements from manufacturing hand at scale
+=============================================
+
+* Switch to small drone brushless motors with planetary gear machined inside. Allows for 2x strength, 2x speed, 3x structural integrity, can be back driven, more sensitive force feedback. We get more strength and speed from efficiency of brushless motors, but also at cost of 2x increase in power use. Planetary gear with 3 planets allows for 3x increase in mechanical strength; compared to weak point of current design is last gear in the gearbox, which rotates on a thin 1mm shaft without bearings. Additionally can machine output shaft and gears to rest on bearings as well as thin, all metal spindle, taking 2x duty of the gear reduction compared to current design, freeing the gear box.
+* 4x motors placed on 1 drone control driver board, with CAN bus, directly soldered into a module. 5 modules for hand, with wrist actuators moved to forearm reducing palm size to human thickness and width.
+* Switch to hall effect position sensors. 3 position sensors + 2 custom in-design resistive strain gauges on a single flexible PCB with long ribbon ending that can plug into driving PCB. Same price overall with easier finger assembly. Significantly fewer cables. Allows waterproofing the fingers, together with moving wrist motors up to forearm, allows waterproofing entire hand. Free space between hall effect sensor and magnet allows for efficient tendon pathing.
+* Master driving PCB built in palm, allowing for 10x reduction in wiring, especially through wrist center.
+* Robot arm interfaces.
+* ROS compatibility.
+* Tool assisted tensioning via magnetic locked spindle halves and a tool that can pull them to unlock, then hold on and turn (like screwdriver) to tension until threshold. Could have all motors facing outside via staggered pentagonal placing of modules on forearm, for easy construction and repairs. No need for loop buckles, finger tendons can go directly through a spindle hole on each half; then spun tight by the motor and tensioning tool.
+
+4x more powerful hand, 2x structurally stronger, back driven, allows for programmed response to touch (ie. driven elastic push back), 2x pressure sensing, waterproofing, cost increase from motors 300, cost increase from separate pcbs 100, cost freed from labour 200. Total cost change 200 increase. Could sell for $1500 per hand.

@@ -4,9 +4,9 @@ Project
 [v] Finish first fully working prototype (with remote hand mimicking).
 [ ] Write pending blogposts on modeling, circuit, and mk 4&5 hands.
 [v] Update PCB with compact design, all 3V3 logic, 5V DC-DC converter (replacing volt reg also leads to 24V rating).
-[ ] Write bill of materials.
+[v] Write bill of materials.
 [ ] Document assembly.
-[ ] Publish first working version.
+[v] Publish first working version.
 
 
 Done
