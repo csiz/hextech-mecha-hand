@@ -4,7 +4,7 @@ Hextech Mechahand
 Full range of motion robotic hand with pressure, position and force sensors for $300 bill of materials.
 
 <span style="display: flex;">
-  <span><video autoplay muted loop width="600"><source src="media/mk_9_object_pickup.mp4" type="video/mp4"/>Video of mk 9 picking up squish toy.</video></span>
+  <span><img src="media/mk_9_object_pickup.png" width="600" alt="Video of mk 9 picking up squish toy."/></span>
   <span><img src="media/mechahand_mk9.jpg" width="600" alt="Mechahand mk 6."/></span>
 </span>
 
