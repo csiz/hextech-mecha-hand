@@ -3,10 +3,7 @@ Hextech Mechahand
 
 Full range of motion robotic hand with pressure, position and force sensors for $300 bill of materials.
 
-<span style="display: flex;">
-  <span><img src="media/mk_9_object_pickup.png" width="600" alt="Video of mk 9 picking up squish toy."/></span>
-  <span><img src="media/mechahand_mk9.jpg" width="600" alt="Mechahand mk 6."/></span>
-</span>
+![Video of mk 9 picking up squish toy.](media/mk_9_object_pickup.png)
 
 The Hextech mechahand is designed to be a low cost robot hand with a similar range
 of motion as a human hand. It's targeted as an accessible standard for reinforcement
@@ -18,6 +15,8 @@ plug into a compact PCB with current sensing for each actuated joint. The hand c
 be controlled remotely by wifi using a force-limited PID loop. In the video, it's
 mimicking my hand position in order to grasp an object. For autonomous control, a
 custom force aware loop can be implemented.
+
+![Mechahand mk 6.](media/mechahand_mk9_600width.jpg)
 
 The hand is built using off the shelf components and a 3D printed body at an amortized
 cost of 300 USD per hand, requiring 30 hours of assembly time. Included in the cost
