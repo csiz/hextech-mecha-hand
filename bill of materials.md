@@ -1,6 +1,6 @@
 Item                                   | Quantity | Batch quantity | Batch price | Unit price | Price $ | Notes                                                               | Link
 ---------------------------------------|----------|----------------|-------------|------------|---------|---------------------------------------------------------------------|--------
-PLA filament 1kg                       | 1        | 1              | 25          | 25         | 25      | Determines color. PLA used for ease of printing details.            | https://www.amazon.com/gp/product/B07WDWZT87
+PLA filament 1kg                       | 0.6      | 1              | 25          | 25         | 15     | Determines color. PLA used for ease of printing details.            | https://www.amazon.com/gp/product/B07WDWZT87
 PETG filament 1kg                      | 0.2      | 1              | 23          | 23         | 4.6     | PETG could be replaced with PLA or vice-versa.                      | https://www.amazon.com/gp/product/B07P2VVFXQ
 TPU filament 1kg                       | 0.2      | 1              | 25          | 25         | 5       | Flexible, grippy filament needed for finger covers and knot beads.  | https://www.amazon.com/gp/product/B074DV9JMX
 M3 hex nuts                            | many     | 150            | 7           | 0.05       | 7       | This is nuts. Get lots, only type used, expect to lose some.        | https://www.amazon.com/gp/product/B07H1NPJGP
@@ -33,8 +33,8 @@ LM2596 DC-DC buck converter 45x21mm    | 1        | 10             | 14         
 24Drive PCB and SMT assembly by jlcpcb | 1        | 5              | 310         | 62         | 62      | Automatic assembly strongly recommended! Can order batch of 2.      | https://jlcpcb.com
 
 
-Amortized total: $302 ($240 components + $62 pcb).
+Amortized total: $292 ($230 components + $62 pcb).
 
 Single hand total: $603 ($413 component batches + $190 batch of 2 pcb).
-
+Pair of hands total: $700 (2 batches of motors, more screws and bearings needed).
 
