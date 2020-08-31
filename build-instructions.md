@@ -4,7 +4,7 @@ Building Hextech Mechahand mk 10
 Components and tools
 --------------------
 
-Buy all the parts required in the bill of materials.
+Buy all the parts required in the [bill of materials](bill-of-materials.md).
 
 Order mostly assembled driving PCBs using the gerber files from `24drive`. Designed for assembly by jlcpcb.com, the
 pick and place and electronics bill of materials are also available in the required formats. Manual assembly of the
