@@ -1,4 +1,4 @@
-Project
+Launch
 -------
 
 [v] Finish first fully working prototype (with remote hand mimicking).
