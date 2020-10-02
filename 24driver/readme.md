@@ -6,16 +6,17 @@ PID control for 24 DC motor channels, with position, current, and pressure senso
 Features
 --------
 
-* 24 DC motor drives; PWM control @ 97kHz. With direction LEDs.
-* 24 Potentiometer inputs
-* 24 Motor current inputs, from 0.1ohm shunt sensors.
-* 12 Strain gauge inputs referenced at half VRef.
+* 24 DC motor drives; PWM control @ 97kHz.
+* 24 Potentiometer inputs.
+* PID control loop at 69Hz.
+* 24 Motor current inputs, measured from 0.1ohm shunt sensors.
+* 12 Strain gauge inputs.
 * Soft power-on via button.
-* Power (Voltage/Current) inputs. Hall effect sensor for current in.
+* Power measuring. Voltage measured with onboard ADC, current measured through hall effect sensor.
 * OLED display.
 * I2C connections.
-* WiFI.
-* Inertial measurement unit cause it's good to have.
+* WiFi.
+* Inertial measurement unit.
 * Maximum 24V, 10A continuous total, and 2A per channel (internally limited).
 * Minimum 6.5V, with auto turn-off feature for low battery voltage (under 6.7V).
 
@@ -48,8 +49,8 @@ Gyro and acceleration measurements via [MPU-6050] connected on the first I2C lin
 Communication with the components is done via the first I2C line for the display, pressure sensors,
 gyro, and PWM controls. Serial interface for position and current measurements.
 
-External interface via WiFi; with a websocket API. Wired interface possible but not yet implemented
-are the second I2C line, and the USB connection.
+External interface via WiFi; with a websocket API. Wired interface possible through I2C, or USB connection,
+but not yet implemented.
 
 Main copper power line has width enough to dissipate 10A continuously. And each motor driver has a
 cutoff set to 2A per. The minimum voltage for the motor drivers is 6.5V and the ESP32 can be powered
