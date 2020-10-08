@@ -11,6 +11,7 @@ Features
 * PID control loop at 69Hz.
 * 24 Motor current inputs, measured from 0.1ohm shunt sensors.
 * 12 Strain gauge inputs.
+* Compact size 76mm x 146mm.
 * Soft power-on via button.
 * Power measuring. Voltage measured with onboard ADC, current measured through hall effect sensor.
 * OLED display.
