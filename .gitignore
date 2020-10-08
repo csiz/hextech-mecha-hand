@@ -15,3 +15,6 @@ leap_control/dist
 24driver/jsinterface/node_modules
 24driver/jsinterface/dist
 *.gcode
+
+# Ignore obj files for now, because they're pretty chunky. Step files seem best.
+*.obj
