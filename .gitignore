@@ -18,3 +18,6 @@ leap_control/dist
 
 # Ignore obj files for now, because they're pretty chunky. Step files seem best.
 *.obj
+
+# Ignore raw SLA printing files.
+*.cbddlp
