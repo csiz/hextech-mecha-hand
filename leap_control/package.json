@@ -13,7 +13,7 @@
   "dependencies": {
     "copy-webpack-plugin": "^5.1.1",
     "d3": "^5.16.0",
-    "lodash": "^4.17.20",
+    "lodash": "^4.17.21",
     "three": "^0.115.0",
     "webpack": "^4.44.1"
   },
