@@ -9,17 +9,21 @@ module.exports = {
     path: path.resolve(__dirname, 'dist'),
   },
   plugins: [
-    new copy_plugin([
-      { from: './index.html', to: 'index.html' }
-    ]),
+    new copy_plugin({
+      patterns: [
+        { from: './index.html', to: 'index.html' }
+      ],
+    }),
   ],
   devtool: "inline-source-map",
   devServer: {
-    contentBase: "./dist"
+    static: {
+      directory: "./dist"
+    }
   },
   resolve: {
     alias: {
-      "24driver": path.resolve(__dirname, "../24driver/jsinterface")
+      "hexhand": path.resolve(__dirname, "../24driver/jsinterface")
     }
   }
 };

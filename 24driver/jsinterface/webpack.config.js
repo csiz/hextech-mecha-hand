@@ -1,19 +1,15 @@
 const path = require("path");
 
-module.exports = [
-  "source-map"
-].map(devtool => ({
+
+module.exports = {
   mode: "development",
   entry: "./index.js",
   output: {
     path: path.resolve(__dirname, "dist"),
-    filename: "24driver.js",
-    library: "24driver"
+    filename: "hexhand.js",
+    library: "hexhand"
   },
-  devtool,
-  optimization: {
-    runtimeChunk: true
-  },
+  devtool: "inline-source-map",
   externals: {
     lodash: {
       commonjs: 'lodash',
@@ -22,4 +18,4 @@ module.exports = [
       root: '_',
     },
   },
-}));
+};

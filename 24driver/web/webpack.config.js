@@ -9,13 +9,15 @@ module.exports = {
     filename: 'bundle.js'
   },
   plugins: [
-    new copy_plugin([
-      { from: './index.html', to: 'index.html' }
-    ]),
+    new copy_plugin({
+      patterns: [
+        { from: './index.html', to: 'index.html' }
+      ],
+    }),
   ],
   resolve: {
     alias: {
-      "24driver": path.resolve(__dirname, "../jsinterface")
+      "hexhand": path.resolve(__dirname, "../jsinterface")
     }
   }
 };

@@ -7,7 +7,7 @@ import {scaleLinear} from "d3-scale";
 
 let d3 = {select, selectAll, range, line, scaleLinear};
 
-import {MotorDriver, exp_average, clamp} from "24driver";
+import {MotorDriver, exp_average, clamp} from "hexhand";
 
 
 // Motor driver setup

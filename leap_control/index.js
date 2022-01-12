@@ -3,7 +3,7 @@
 import * as d3 from "d3";
 import * as THREE from "three";
 
-import {MotorDriver, deinterpolate, zero_commands} from "24driver";
+import {MotorDriver, deinterpolate, zero_commands} from "hexhand";
 import { local } from "d3";
 import { Vector3 } from "three";
 
@@ -164,7 +164,7 @@ function parse_hand_state(leap_state){
     wrist_world_position.clone().applyMatrix4(local_transform).negate());
 
   // Keep a reference to reverse to world coordinates.
-  let world_transform = new THREE.Matrix4().getInverse(local_transform);
+  let world_transform = local_transform.clone().invert();
 
   // Arm
   // ---
@@ -768,14 +768,14 @@ d3.select("#shoulder-distance")
 // ### Remote commands
 
 d3.select("body")
-  .on("keydown", () => {
-    if (d3.event.code == "Space") {
+  .on("keydown", (event) => {
+    if (event.code == "Space") {
       driver.command();
       d3.select("#command_flag").text("Commanding").style("color", "orangered");
     }
   })
-  .on("keyup", () => {
-    if (d3.event.code == "Space"){
+  .on("keyup", (event) => {
+    if (event.code == "Space"){
       driver.release();
       d3.select("#command_flag").text("Released").style("color", null);
     }
