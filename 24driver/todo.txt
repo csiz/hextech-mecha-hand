@@ -2,7 +2,8 @@ TODO PCB
 --------
 
 [x] Dammit! Use a pulldown for the base of the power button transistor. The backvoltage from the diode turns it on...
-[ ] Nope, it's a fried diode, and welded button. Both caused by lots of current charging the capacitor bank. Hmm.
+[x] Nope, it's a fried diode, and welded button. Both caused by lots of current charging the capacitor bank. Hmm.
+  ^ Ditched the button completely.
 
 TODO Code
 ---------
