@@ -1,18 +1,24 @@
-Launch
+Circuit
 -------
 
-[v] Finish first fully working prototype (with remote hand mimicking).
-[ ] Write pending blogposts on modeling, circuit, and mk 4&5 hands.
-[v] Update PCB with compact design, all 3V3 logic, 5V DC-DC converter (replacing volt reg also leads to 24V rating).
-[v] Write bill of materials.
-[ ] Document assembly.
-[v] Publish first working version.
+[ ] Very important, move logo 3 mm to the side on the fingertip so it can be seen from outside.
+[ ] Totally not important, default the motor drivers to sleep state when controller off also cause it's
+a strapping pin for the ESP32...
+[ ] Slight increase to spacing of fingertip pressure sensors. Fix top folding, just offset pads a bit and
+bend during assembly.
+
 
 
 Done
 ====
 
 
+[v] Finish first fully working prototype (with remote hand mimicking).
+[x] Write pending blogposts on modeling, circuit, and mk 4&5 hands.
+[v] Update PCB with compact design, all 3V3 logic, 5V DC-DC converter (replacing volt reg also leads to 24V rating).
+[v] Write bill of materials.
+[x] Document assembly.
+[x] Publish first working version.
 [v] Connect the pid drive shift register to the reset line. After a reset the arduino pulls the pins high, which causes the motors to move if the shift register outputs are also high.
 [x] To potentially make the reset programmable, leave SR reset alone, but add pull-down resistors to the all motor driver inputs.
     Inbuilt pull down resistors, now all inputs are connected to shift registers which are explicitly 0ed at power up.
