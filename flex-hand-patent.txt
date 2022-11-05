@@ -1,0 +1,57 @@
+Flexible sensor circuit for robotic hand
+========================================
+
+The invetion consists of a flexible printed circuit (FPC) assembly which contains integrated sensors for a multi segmented robotic hand. The assembly consists of the palm and finger circuits. The palm circuit contains sensors, connectors for the finger circuits, and supporting integrated chips (IC) for data processing and control. The sensors used in both the palm and fingers are on-axis magnetic position encoders as well as an innovative force and an innnovative torque sensors integrated into the FPC.
+
+The flexible printed circuit can be made with standard manufacturing processes including automatic IC assembly. The circuit parts are then cut from the production sheet and folded around the palm structure, including passing through a hole in the structure in order to place sensors on both sides of the palm. The hall effect, on-axis, position encoders on the circuit rely on precise assembly on the joint axis such that they can detect the position of the radially polarized magnets embded in the actuated segments. In order to achieve this positioning, slots are designed in the structural pieces which hold the circuit in it's proper position. The finger circuits are similarly folded and assembled together with the structural segments of the fingers. For the fingers we additionally design plastic clips that affix the circuit in their corresponding slots. Because the finger bends at multiple joints it is important to include strain relief loops into the circuit design to accomodate the bending. Starting from the fingertip the circuit is assembled in it's slot and a plastic clip fixes it in place. The fingertip halves are brought together and the force sensors are folded to cover the outside of the fingertip. The fingertip is then covered in aluminium foil to shield the force sensors from detecting proximity and is then covered by a flexible plastic skin. The circuit is then knotted around the flexible middle segment to keep it securely in position during finger movements. The circuit is also routed very close to the joint axis thus minimizing bending, additionally it is bent around to create a strain relief loop. The circuit is now placed in the slot in the proximal segment and clipped in place. The final section of the fingertip circuit is bent around to form the relief loop for the knuckle. The circuit passes straight through the middle of the knuckle minimizing bending during finger movement. Additionally this
+circuit strip that passes through the knuckle is split into two to further increase bending allowance, especially needed because the knuckle allows movement in 2 orthogonal axes. The end of the finger circuit strip contains a printed connector to the palm circuit. In order to accomodate assembly the end is longer then required and will be folded up after connecting and attaching the finger to the palm. We thus create a very compact sensor circuit made of few modular pieces that cover the multitude of moving segments in the robot hand with sensors. We eliminiate the need to attach additional wires as the circuits themselves are the wires and the connectors that we need. The on-axis position encoders provide very accurate position feedback which is also robust to external magnetic fields because of the proximity of the reference magnet to the detecting IC. Because of the accurate position feedback and on-axis encoers on each joint this allows us to measure torque in the fingertip using a 4 linkage mechanism.
+
+
+
+Advantages
+----------
+
+My circuit design solves a number of problems present in robot hands available on the market:
+* A big advantage is lower cost due to simplifying assembly and minimizing the number of individual components required. Once assembled at a PCB manufacturing facility the circuit doesn't require any extra soldering on the final robot assembly and the circuit clips directly into position in channels designed into the robot structure.
+* Another issue solved by my circuit is the ability to directly measure joint positions using magnetic rotation encoders placed on the axis of rotation. Most other robotic hands measure the motor servo positions that connect to the fingers through tendons; this method of measuring position has lower accuracy because the tendons can stretch and have additional backlash. Some other robotic hands also use magnetic sensors, but they are magnetic proximity sensors that measure the distances to a magnet embeded in the opposing finger segment; this design suffers from innacuracies due to other magnets or magnetic surfaces present in the environment. Using precise on-axis sensors as in my design is difficult due to space constraints.
+* The force sensors in this design are simple and integrated into the circuit using electrodes made by common circuit board manufacturing processes and utilise cheap touch sensor chips. Other techniques like strain gauges, or pressure sensitive resistive wire require separate manufacturing techniques using specialized metals, and they require additional assembly to electrically connect the specialized sensor to the main circuit.
+
+
+
+Unique aspects of circuit design
+--------------------------------
+
+* Very compact and easy to assemble design. My circuit contains 53 sensors on 34 independetly moving segments yet the circuit assembly is comprised of only 6 modules. And those modules can directly connect to each other without requiring additional wiring at assembly time.
+* Using on-axis position encoders on a robotic hand appears to be unique. This is enabled by the very compact design; the finger is 16mm wide while the pancake stack made from the flexible circuit, encoder IC, reference magnet, and space for central wire routing occupy ~9mm which is a significant amount of the space available. Solid circuits are thicker than the the flxible circuit and traditional wiring is thicker as well, making the on-axis encoder placement impractical for those designs.
+* The finger wiring is routed through the middle of the knuckle minimizing bending. Routing further from the center of rotation requires larger relief loops or expensive miniature rotary connectors (I keep squinting at the "Shadow robot hand" wires and it's possible they use the rotary connector type, I'm not sure, but they certainly don't route through the middle of the knuckle).
+* The circuit is knotted around the middle finger segment to keep it securely in place. Never heard of anyone else knotting a circuit board.
+* Every sensor is integrated into the circuit requiring no external wires or specialized manufacturing processes.
+* The slots and clips in the structural design precisely hold the circuit in place such that each on-axis encoder is placed accurately on the joint axis. The clips also ensure a small air gap between the position encoder and the reference magnets.
+
+
+
+Capacitive force sensors
+------------------------
+
+I form a capacitive force sensor by folding two electrodes around a compressible dielectric material (sticky tape disk). When a compressive force is applied the distance between electrodes shrinks which changes the capacitance. We measure the capacitance, and therefore the pressing force, using an integrated chip (IC) placed on the same circuit board connected to the electrodes. Multiple sensors can be connected to a single IC and they can be arranged around the fingertip to measure forces from all sides. In order to measure just the applied force and not proximity detection we can surround the sensor arrangement with a conductive foil (aluminium foil), thus we shield from the external capacitance formed when bringing the sensor close to a conductive surface (e.g. human finger). The sensor is finalized with a protective cover made of flexible plastic material.
+
+The sensor can alternatively be covered with a hard plastic shell suspended on pegs above the sensors. The pegs increase the distance to the external contact surface, minimizing external capacitance. 
+
+Unique aspects of this design:
+* The sensor is created by folding a single flexible circuit board. Thus we don't need 2 separate circuit boards sandwiched together and connected by wires; and we don't need to coat a surface with an electrically conductive layer that is difficult to manufacture.
+* Multiple sensors can be folded from the same flexible circuit creating a 3D sensing array.
+* It's very simple to build, requiring only a pad of sticky tape and folding the circuit.
+* The sensors are integrated with the rest of the circuit. Because the electrodes are folded from the same flexible circuit board that contains our integrated chips the electrical connections can be printed directly onto the circuit.
+* I use an additional layer of shielding by surrounding the sensors with aluminium foil. Thus I can focus on measuring the force acting on the sensors without stray capacitance from electrically conductive surfaces in close proximity. For example my sensor will ignore a finger coming close to the sensor but not physically touching it.
+
+
+
+4 linkage torque sensor
+-----------------------
+
+We take advantage of the precise on-axis position encoders on every joint to create a torque sensor for the fingertip. The distal and proximal joints of the fingers are linked together with a 4 link mechanism such that the passive distal joint bends when the active proximal joint is driven by the actuator motor. We allow one of the connecting segments to be semi-rigid thus allowing the a small degree of movement of the passive distal joint when torque is applied to it, for example when the fingertip touches an object. We can measure the applied torque by taking measurements from both position sensors and calculating the deformation of the semi-rigid link from the kinematic model.
+
+Unique aspects of this design:
+* In this torque sensor the two position encoders are not aligned on the same axis.
+* The semi-rigid link privides a good anchor point for cable management that minimizez bending of the cable. The anchor is created by knotting the flexible circuit board around the semi-rigid link.
+* This compact and simple torque sensor comes for free because of the presence of on-axis encoders. Most robotic finger designs use a similar 4 linkage bar design for the tip kinematics, but all 4 links are usually made rigid. We obtain our sensor by making one of the links more flexible and doing some calculations from the position measurements.
