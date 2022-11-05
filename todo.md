@@ -6,6 +6,8 @@ Circuit
 a strapping pin for the ESP32...
 [ ] Slight increase to spacing of fingertip pressure sensors. Fix top folding, just offset pads a bit and
 bend during assembly.
+[ ] Modify motor layout for 17mm motor spacing; use the extra space and go back to the new motor drivers.
+[ ] Add at least a button; dedicate it to reset the wifi or something.
 
 
 
