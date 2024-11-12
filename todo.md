@@ -4,9 +4,9 @@ Circuit
 [ ] Very important, move logo 3 mm to the side on the fingertip so it can be seen from outside.
 [ ] Totally not important, default the motor drivers to sleep state when controller off also cause it's
 a strapping pin for the ESP32...
-[ ] Slight increase to spacing of fingertip pressure sensors. Fix top folding, just offset pads a bit and
+[x] Slight increase to spacing of fingertip pressure sensors. Fix top folding, just offset pads a bit and
 bend during assembly.
-[ ] Modify motor layout for 17mm motor spacing; use the extra space and go back to the new motor drivers.
+[x] Modify motor layout for 17mm motor spacing; use the extra space and go back to the new motor drivers.
 [ ] Add at least a button; dedicate it to reset the wifi or something.
 
 
