@@ -15,7 +15,7 @@
     "d3": "^7.3.0",
     "lodash": "^4.17.20",
     "three": "^0.136.0",
-    "webpack": "^5.65.0"
+    "webpack": "^5.99.7"
   },
   "devDependencies": {
     "webpack-cli": "^4.9.1",
