@@ -1,6 +1,9 @@
 Circuit
 -------
 
+Use MT6701QT-STD because it's teeny tiny and < 1mm height.
+
+
 [ ] Very important, move logo 3 mm to the side on the fingertip so it can be seen from outside.
 [ ] Totally not important, default the motor drivers to sleep state when controller off also cause it's
 a strapping pin for the ESP32...
