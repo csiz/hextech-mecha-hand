@@ -3,6 +3,25 @@ Hextech Mechahand
 
 Full range of motion robotic hand with pressure, position and force sensors for $300 bill of materials.
 
+Mechahand mk 12
+---------------
+
+Patented design with integrated sensor suite! [GB2626014](https://worldwide.espacenet.com/publicationDetails/originalDocument?FT=D&date=20250430&DB=EPODOC&locale=en_EP&CC=GB&NR=2626014B&KC=B&ND=5)
+
+
+Mechahand mk 10
+---------------
+
+New design routes all cables and tendons through the center of the wrist, hiding them from
+view and increasing the range of movement.
+
+<img src="/media/mechahand_mk10_bottom_view.jpg" alt="Mechahand mk 10." width="600"/>
+
+
+
+Mechahand mk 9
+--------------
+
 <img src="/media/mk_9_object_pickup.png" alt="Video of mk 9 picking up squish toy." width="600"/>
 
 The Hextech mechahand is designed to be a low cost robot hand with a similar range
@@ -25,13 +44,6 @@ the control circuit, and driver code is open source. Please open an issue wherev
 [build instructions](build-instructions.md) need to be clarified.
 
 
-Mechahand mk 10
----------------
-
-New design routes all cables and tendons through the center of the wrist, hiding them from
-view and increasing the range of movement.
-
-<img src="/media/mechahand_mk10_bottom_view.jpg" alt="Mechahand mk 10." width="600"/>
 
 
 Project layout
