@@ -3,6 +3,14 @@ Hextech Mechahand
 
 Full range of motion robotic hand with pressure, position and force sensors for $300 bill of materials.
 
+Mechahand mk 14
+---------------
+
+Working on release candidate mk14. Using own motor drivers for fine force control, enhanced 
+integrated sensor suite, completely refactored control code, easy USB connection, and 
+improved manufacturing and repairability.
+ 
+
 Mechahand mk 12
 ---------------
 
